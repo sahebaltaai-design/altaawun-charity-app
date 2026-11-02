@@ -319,13 +319,40 @@ class _CharityShellState extends State<CharityShell> {
               )),
               Padding(padding: const EdgeInsets.all(12), child: Row(children: [
                 TextButton(
-                  onPressed: () {
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: sheetContext,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('استعادة الإعدادات الافتراضية'),
+                        content: const Text(
+                          'سيعود ترتيب التصنيفات الستة إلى وضعه الأصلي، '
+                          'وتظهر جميع التصنيفات المخفية. '
+                          'ستبقى التصنيفات المضافة محفوظة بعد التصنيفات الأساسية.'
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext, false),
+                            child: const Text('إلغاء'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(dialogContext, true),
+                            child: const Text('استعادة'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed != true || !mounted || !sheetContext.mounted) return;
                     refreshSheet(() {
                       categoryOrder = [..._defaultCategoryOrder, ...customCategories.keys];
                       hiddenCategories.clear();
                     });
                     setState(() {});
-                    _saveCategorySettings();
+                    await _saveCategorySettings();
+                    if (sheetContext.mounted) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(
+                        const SnackBar(content: Text('تمت استعادة الترتيب الافتراضي وإظهار جميع التصنيفات')),
+                      );
+                    }
                   },
                   child: const Text('استعادة الترتيب الافتراضي'),
                 ),
