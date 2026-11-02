@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 
@@ -24,6 +25,86 @@ class AltaawunApp extends StatelessWidget {
     ),
     builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child ?? const SizedBox()),
     home: const SplashScreen(),
+  );
+}
+
+class ProductDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> product;
+  const ProductDetailScreen({super.key, required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (product['name'] ?? 'تفاصيل المنتج').toString();
+    final image = (product['image'] ?? '').toString();
+    final price = (product['price'] ?? '').toString();
+    final description = (product['description'] ?? '').toString();
+    final link = (product['link'] ?? '').toString();
+    final uri = Uri.tryParse(link);
+    final validLink = uri != null && uri.scheme == 'https' &&
+        (uri.host == 'aytamaliraq.com' || uri.host == 'www.aytamaliraq.com');
+    return Scaffold(
+      appBar: AppBar(title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      body: ListView(padding: const EdgeInsets.all(18), children: [
+        if (image.isNotEmpty)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.network(image, height: 260, fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const SizedBox(
+                height: 180, child: Icon(Icons.shopping_bag, size: 80))),
+          ),
+        const SizedBox(height: 18),
+        Text(name, style: Theme.of(context).textTheme.headlineSmall),
+        if (price.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(price, style: const TextStyle(
+            color: green, fontSize: 20, fontWeight: FontWeight.bold)),
+        ],
+        if (description.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text(description, style: const TextStyle(fontSize: 16, height: 1.6)),
+        ],
+        const SizedBox(height: 26),
+        FilledButton.icon(
+          onPressed: validLink ? () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => DonationWebScreen(url: link))) : null,
+          icon: const Icon(Icons.volunteer_activism),
+          label: const Text('تبرع الآن'),
+        ),
+        const SizedBox(height: 8),
+        const Text('يتم إكمال التبرع عبر صفحة المنتج الآمنة على موقع الجمعية داخل التطبيق.',
+          textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
+      ]),
+    );
+  }
+}
+
+class DonationWebScreen extends StatefulWidget {
+  final String url;
+  const DonationWebScreen({super.key, required this.url});
+  @override
+  State<DonationWebScreen> createState() => _DonationWebScreenState();
+}
+
+class _DonationWebScreenState extends State<DonationWebScreen> {
+  late final WebViewController controller;
+  @override
+  void initState() {
+    super.initState();
+    controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (request) {
+          final uri = Uri.tryParse(request.url);
+          if (uri == null || uri.scheme != 'https') return NavigationDecision.prevent;
+          return NavigationDecision.navigate;
+        },
+      ))
+      ..loadRequest(Uri.parse(widget.url));
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('إكمال التبرع')),
+    body: WebViewWidget(controller: controller),
   );
 }
 
@@ -256,6 +337,9 @@ class _CharityShellState extends State<CharityShell> {
               padding: EdgeInsets.all(28), child: Center(child: Text('لا توجد مقالات في هذا التصنيف حاليًا'))),
             for (final post in posts)
               Card(child: ListTile(
+                onTap: isProducts ? () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => ProductDetailScreen(
+                    product: Map<String, dynamic>.from(post as Map)))) : null,
                 leading: isProducts && (post['image'] ?? '').toString().isNotEmpty
                   ? Image.network(post['image'].toString(), width: 56, height: 56,
                       fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag))
