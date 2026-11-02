@@ -853,6 +853,36 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
         ])));
 
+  Widget _sponsorshipProducts() {
+    final categories = wpCategories.where((c) =>
+      c['type'] == 'product_cat' &&
+      RegExp(r'كفال|يتيم|أيتام|ايتام|orphan|sponsor', caseSensitive: false)
+        .hasMatch((c['name'] ?? '').toString())).toList();
+    if (wpLoading && wpCategories.isEmpty) {
+      return const Padding(padding: EdgeInsets.all(20),
+        child: Center(child: CircularProgressIndicator()));
+    }
+    if (categories.isEmpty) {
+      return const Padding(padding: EdgeInsets.all(16),
+        child: Text('لعرض الأيتام هنا، اختر تصنيف منتجات الكفالة من لوحة ووردبريس ← تصنيفات التطبيق. ستظهر المنتجات المنشورة تلقائيًا.',
+          textAlign: TextAlign.center));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('الأيتام المتاحون للكفالة',
+        style: TextStyle(fontSize: 21, color: deepGreen, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      for (final category in categories)
+        Card(child: ListTile(
+          leading: const Icon(Icons.favorite, color: green),
+          title: Text((category['name'] ?? '').toString()),
+          subtitle: const Text('عرض الصور والتفاصيل والكفالة'),
+          trailing: const Icon(Icons.chevron_left),
+          onTap: () => _openWordPressCategory(
+            category['id'] as int, (category['name'] ?? '').toString(), 'product_cat'),
+        )),
+    ]);
+  }
+
   Widget _section() {
     final descriptions = [
       '',
@@ -883,7 +913,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         _feature(Icons.auto_stories_outlined, 'متابعة تطوره الدراسي'),
         _feature(Icons.shield_outlined, 'خصوصية وأمان بيانات الأطفال'),
         const SizedBox(height: 8),
-        _disabledAction('كفالة الآن — قريبًا'),
+        _sponsorshipProducts(),
       ] else if (page == 2) ...[
         _feature(Icons.menu_book, 'مناهج دراسية'),
         _feature(Icons.groups, 'أنشطة طلابية'),
