@@ -99,6 +99,15 @@ add_action('rest_api_init', function () {
                     'name' => $term->name,
                     'count' => (int)$term->count,
                     'parent' => (int)$term->parent,
+                    'image' => (function () use ($term) {
+                        $thumbnail_id = get_term_meta($term->term_id, 'thumbnail_id', true);
+                        $url = $thumbnail_id ? wp_get_attachment_image_url($thumbnail_id, 'medium') : false;
+                        if (!$url) {
+                            $thumbnail_id = get_term_meta($term->term_id, 'category_image_id', true);
+                            $url = $thumbnail_id ? wp_get_attachment_image_url($thumbnail_id, 'medium') : false;
+                        }
+                        return $url ?: '';
+                    })(),
                     'link' => get_term_link($term),
                 );
             }
