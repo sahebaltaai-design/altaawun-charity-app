@@ -215,7 +215,7 @@ class _CharityShellState extends State<CharityShell> {
   Widget _home() => ListView(padding: EdgeInsets.zero, children: [
     SizedBox(height: 260, child: Stack(fit: StackFit.expand, children: [
       Image.network(
-        'https://raw.githubusercontent.com/sahebaltaai-design/altaawun-charity-app/main/assets/images/home_hero.jpg',
+        'https://raw.githubusercontent.com/sahebaltaai-design/altaawun-charity-app/main/home_hero.jpg',
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(
           gradient: LinearGradient(colors: [Color(0xFF194B2F), Color(0xFF00642D)]))),
