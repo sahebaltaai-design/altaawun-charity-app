@@ -178,6 +178,9 @@ class _CharityShellState extends State<CharityShell> {
   };
   List<int> categoryOrder = List.of(_defaultCategoryOrder);
   Set<int> hiddenCategories = {};
+  Map<int, String> customCategories = {};
+  int? customPage;
+  String _labelFor(int id) => customCategories[id] ?? _categoryLabels[id] ?? 'تصنيف';
 
   @override
   void initState() {
@@ -190,15 +193,27 @@ class _CharityShellState extends State<CharityShell> {
     final savedOrder = prefs.getStringList('home_category_order');
     final parsed = savedOrder?.map(int.tryParse).whereType<int>().toList();
     final savedHidden = prefs.getStringList('home_category_hidden') ?? [];
+    final savedCustom = prefs.getStringList('home_custom_categories') ?? [];
+    final custom = <int, String>{};
+    for (final item in savedCustom) {
+      final separator = item.indexOf('|');
+      if (separator < 0) continue;
+      final id = int.tryParse(item.substring(0, separator));
+      final name = item.substring(separator + 1).trim();
+      if (id != null && id >= 100 && name.isNotEmpty) custom[id] = name;
+    }
     if (!mounted) return;
     setState(() {
-      if (parsed != null && parsed.length == 6 &&
-          parsed.toSet().containsAll(_defaultCategoryOrder) &&
-          parsed.toSet().length == 6) {
+      customCategories = custom;
+      final valid = {..._defaultCategoryOrder, ...custom.keys};
+      if (parsed != null && parsed.toSet().length == parsed.length &&
+          parsed.toSet().containsAll(valid) && valid.containsAll(parsed)) {
         categoryOrder = parsed;
+      } else {
+        categoryOrder = [..._defaultCategoryOrder, ...custom.keys];
       }
       hiddenCategories = savedHidden.map(int.tryParse).whereType<int>()
-          .where(_defaultCategoryOrder.contains).toSet();
+          .where(valid.contains).toSet();
     });
   }
 
@@ -208,6 +223,43 @@ class _CharityShellState extends State<CharityShell> {
         categoryOrder.map((id) => '$id').toList());
     await prefs.setStringList('home_category_hidden',
         hiddenCategories.map((id) => '$id').toList());
+    await prefs.setStringList('home_custom_categories',
+        customCategories.entries.map((e) => '${e.key}|${e.value}').toList());
+  }
+
+  Future<void> _addCategory(StateSetter refreshSheet) async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إضافة تصنيف جديد'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 50,
+          decoration: const InputDecoration(hintText: 'اسم التصنيف'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء')),
+          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('إضافة')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (!mounted || name == null || name.isEmpty) return;
+    final id = customCategories.keys.fold<int>(99, (max, x) => x > max ? x : max) + 1;
+    refreshSheet(() {
+      customCategories[id] = name;
+      categoryOrder.add(id);
+    });
+    setState(() {});
+    await _saveCategorySettings();
+  }
+
+  void _openCustomCategory(int id) {
+    setState(() { customPage = id; page = 0; });
   }
 
   void _manageCategories() {
@@ -225,6 +277,11 @@ class _CharityShellState extends State<CharityShell> {
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               ),
               const Text('اسحب علامة الترتيب، أو أخفِ التصنيف بالمفتاح'),
+              TextButton.icon(
+                onPressed: () => _addCategory(refreshSheet),
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('إضافة تصنيف جديد'),
+              ),
               Expanded(child: ReorderableListView.builder(
                 buildDefaultDragHandles: false,
                 itemCount: categoryOrder.length,
@@ -244,8 +301,23 @@ class _CharityShellState extends State<CharityShell> {
                     leading: ReorderableDragStartListener(
                       index: index,
                       child: const Icon(Icons.drag_handle, color: green)),
-                    title: Text(_categoryLabels[id]!),
-                    trailing: Switch(
+                    title: Text(_labelFor(id)),
+                    subtitle: customCategories.containsKey(id) ? const Text('تصنيف مخصص') : null,
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (customCategories.containsKey(id))
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline, color: red),
+                          onPressed: () {
+                            refreshSheet(() {
+                              categoryOrder.remove(id);
+                              customCategories.remove(id);
+                              hiddenCategories.remove(id);
+                            });
+                            setState(() {});
+                            _saveCategorySettings();
+                          },
+                        ),
+                      Switch(
                       value: !hiddenCategories.contains(id),
                       onChanged: (visible) {
                         refreshSheet(() {
@@ -259,6 +331,7 @@ class _CharityShellState extends State<CharityShell> {
                         _saveCategorySettings();
                       },
                     ),
+                    ]),
                   );
                 },
               )),
@@ -266,7 +339,7 @@ class _CharityShellState extends State<CharityShell> {
                 TextButton(
                   onPressed: () {
                     refreshSheet(() {
-                      categoryOrder = List.of(_defaultCategoryOrder);
+                      categoryOrder = [..._defaultCategoryOrder, ...customCategories.keys];
                       hiddenCategories.clear();
                     });
                     setState(() {});
@@ -287,7 +360,7 @@ class _CharityShellState extends State<CharityShell> {
     );
   }
 
-  void go(int value) => setState(() => page = value);
+  void go(int value) => setState(() { page = value; customPage = null; });
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -320,7 +393,7 @@ class _CharityShellState extends State<CharityShell> {
           ),
       ])),
     ]))),
-    body: page == 0 ? _home() : _section(),
+    body: customPage != null ? _customSection(customPage!) : page == 0 ? _home() : _section(),
     bottomNavigationBar: NavigationBar(
       height: 72,
       selectedIndex: [0, 1, 4, 3, 6].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 6].indexOf(page),
@@ -339,6 +412,25 @@ class _CharityShellState extends State<CharityShell> {
     Icons.home, Icons.favorite, Icons.school, Icons.volunteer_activism,
     Icons.article, Icons.photo_library, Icons.menu_book,
   ];
+
+  Widget _customSection(int id) => ListView(
+    padding: const EdgeInsets.all(20),
+    children: [
+      TextButton.icon(
+        onPressed: () => go(0),
+        icon: const Icon(Icons.arrow_forward),
+        label: const Text('العودة إلى الرئيسية'),
+      ),
+      const SizedBox(height: 30),
+      const Icon(Icons.folder_open, size: 86, color: green),
+      const SizedBox(height: 18),
+      Text(_labelFor(id), textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: deepGreen)),
+      const SizedBox(height: 12),
+      const Text('هذا التصنيف جاهز للعرض. يمكن ربط محتواه لاحقًا بموقع الجمعية.',
+          textAlign: TextAlign.center),
+    ],
+  );
 
   Widget _home() => ListView(padding: EdgeInsets.zero, children: [
     SizedBox(height: 260, child: Stack(fit: StackFit.expand, children: [
@@ -371,7 +463,7 @@ class _CharityShellState extends State<CharityShell> {
         children: [
           for (final id in categoryOrder)
             if (!hiddenCategories.contains(id))
-              _shortcut(_categoryIcons[id]!, _categoryLabels[id]!, id,
+              _shortcut(_categoryIcons[id] ?? Icons.folder_outlined, _labelFor(id), id,
                   color: (id == 3 || id == 4) ? red : green),
         ],
       ),
@@ -391,7 +483,7 @@ class _CharityShellState extends State<CharityShell> {
 
   Widget _shortcut(IconData icon, String title, int destination, {Color color = green}) =>
     Material(color: Colors.white, borderRadius: BorderRadius.circular(14),
-      child: InkWell(borderRadius: BorderRadius.circular(14), onTap: () => go(destination),
+      child: InkWell(borderRadius: BorderRadius.circular(14), onTap: () => destination >= 100 ? _openCustomCategory(destination) : go(destination),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(icon, size: 36, color: color),
           const SizedBox(height: 9),
