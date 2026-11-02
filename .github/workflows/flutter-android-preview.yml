@@ -17,7 +17,7 @@ jobs:
       - name: Generate Android project
         run: flutter create --platforms=android --org com.altaawuncharity --project-name altaawun_charity_app .
       - name: Configure Arabic app name
-        run: bash tool/configure_app_name.sh
+        run: bash tool/configure_app_name.sh && bash tool/configure_firebase.sh
       - name: Install dependencies
         run: flutter pub get
       - name: Static analysis
