@@ -2,12 +2,6 @@ name: Flutter Android preview
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'lib/**'
-      - 'pubspec.yaml'
-      - '.github/workflows/flutter-android-preview.yml'
 
 jobs:
   android:
@@ -21,7 +15,7 @@ jobs:
           channel: stable
           cache: true
       - name: Generate Android project
-        run: flutter create --platforms=android --project-name altaawun_charity_app .
+        run: flutter create --platforms=android --org com.altaawuncharity --project-name altaawun_charity_app .
       - name: Configure Arabic app name
         run: bash tool/configure_app_name.sh
       - name: Install dependencies
@@ -29,7 +23,7 @@ jobs:
       - name: Static analysis
         run: flutter analyze
       - name: Build preview APK
-        run: flutter build apk --debug
+        run: flutter build apk --debug --build-number=${{ github.run_number }}
       - name: Upload preview APK
         uses: actions/upload-artifact@v4
         with:
