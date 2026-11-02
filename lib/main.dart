@@ -467,11 +467,16 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
               padding: EdgeInsets.all(28), child: Center(child: Text('لا توجد مقالات في هذا التصنيف حاليًا'))),
             for (final post in posts)
               Card(child: ListTile(
+                minLeadingWidth: 76,
                 onTap: () => setState(() => selectedItem = Map<String, dynamic>.from(post as Map)),
-                leading: (isProducts ? (post['image'] ?? '').toString() : _postImage(post)).isNotEmpty
-                  ? Image.network(isProducts ? post['image'].toString() : _postImage(post), width: 56, height: 56,
-                      fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag))
-                  : Icon(isProducts ? Icons.shopping_bag : Icons.article, color: green),
+                leading: SizedBox(width: 76, height: 76, child:
+                  (isProducts ? (post['image'] ?? '').toString() : _postImage(post)).isNotEmpty
+                    ? ClipRRect(borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          isProducts ? post['image'].toString() : _postImage(post),
+                          width: 76, height: 76, fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: green)))
+                    : Icon(isProducts ? Icons.shopping_bag : Icons.article, color: green)),
                 title: Text(isProducts
                     ? (post['name'] ?? '').toString()
                     : _plainText((post['title']?['rendered'] ?? '').toString()),
