@@ -507,28 +507,53 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
               trailing: IconButton(icon: const Icon(Icons.home), onPressed: () => go(0))),
             if (posts.isEmpty) const Padding(
               padding: EdgeInsets.all(28), child: Center(child: Text('لا توجد مقالات في هذا التصنيف حاليًا'))),
-            for (final post in posts)
-              Card(child: ListTile(
-                minLeadingWidth: 76,
+            for (final post in posts) ...[
+              InkWell(
                 onTap: () => setState(() => selectedItem = Map<String, dynamic>.from(post as Map)),
-                leading: SizedBox(width: 76, height: 76, child:
-                  (isProducts ? (post['image'] ?? '').toString() : _postImage(post)).isNotEmpty
-                    ? ClipRRect(borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          isProducts ? post['image'].toString() : _postImage(post),
-                          width: 76, height: 76, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: green)))
-                    : Icon(isProducts ? Icons.shopping_bag : (_postHasVideo(post) ? Icons.play_circle_fill : Icons.article), color: green)),
-                title: Text(isProducts
-                    ? (post['name'] ?? '').toString()
-                    : _plainText((post['title']?['rendered'] ?? '').toString()),
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(isProducts
-                    ? [(post['description'] ?? '').toString(), (post['price'] ?? '').toString()]
-                        .where((x) => x.isNotEmpty).join(' — ')
-                    : _plainText((post['excerpt']?['rendered'] ?? '').toString()),
-                  maxLines: 3, overflow: TextOverflow.ellipsis),
-              )),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: 94, height: 82,
+                        child: Stack(children: [
+                          Positioned.fill(child: ClipRRect(
+                            borderRadius: BorderRadius.circular(5),
+                            child: (isProducts ? (post['image'] ?? '').toString() : _postImage(post)).isNotEmpty
+                              ? Image.network(isProducts ? (post['image'] ?? '').toString() : _postImage(post),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(Icons.image_outlined, color: green))
+                              : const Icon(Icons.image_outlined, color: green),
+                          )),
+                          if (!isProducts && _postHasVideo(post))
+                            const Positioned(bottom: 4, right: 4,
+                              child: Icon(Icons.play_circle_fill, color: Colors.white, size: 26)),
+                        ]),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(isProducts ? (post['name'] ?? '').toString()
+                              : _plainText((post['title']?['rendered'] ?? '').toString()),
+                            maxLines: 3, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, height: 1.3)),
+                          const SizedBox(height: 7),
+                          Text(isProducts ? (post['price'] ?? '').toString()
+                              : (wpSelectedTitle ?? 'أخبار'),
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          if (!isProducts && (post['date'] ?? '').toString().isNotEmpty)
+                            Text((post['date'] ?? '').toString().split('T').first,
+                              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        ],
+                      )),
+                    ],
+                  ),
+                ),
+              ),
+              const Divider(height: 1, indent: 14, endIndent: 14),
+            ],
           ]);
         } catch (_) {
           return const Center(child: Text('تعذر قراءة بيانات المقالات'));
