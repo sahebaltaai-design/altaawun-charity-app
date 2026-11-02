@@ -108,6 +108,56 @@ class _DonationWebScreenState extends State<DonationWebScreen> {
   );
 }
 
+class _HtmlContent extends StatefulWidget {
+  final String content;
+  const _HtmlContent({required this.content});
+  @override
+  State<_HtmlContent> createState() => _HtmlContentState();
+}
+class _HtmlContentState extends State<_HtmlContent> {
+  late final WebViewController controller;
+  @override
+  void initState() {
+    super.initState();
+    controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.disabled)
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (_) => NavigationDecision.prevent,
+      ));
+    controller.loadHtmlString(
+      '<html lang="ar" dir="rtl"><meta name="viewport" content="width=device-width,initial-scale=1">'
+      '<style>body{font-family:sans-serif;font-size:17px;line-height:1.8;padding:8px;}img{max-width:100%;height:auto;}</style>'
+      '${widget.content}</html>');
+  }
+  @override
+  Widget build(BuildContext context) => WebViewWidget(controller: controller);
+}
+class _CheckoutContent extends StatefulWidget {
+  final String url;
+  const _CheckoutContent({required this.url});
+  @override
+  State<_CheckoutContent> createState() => _CheckoutContentState();
+}
+class _CheckoutContentState extends State<_CheckoutContent> {
+  late final WebViewController controller;
+  @override
+  void initState() {
+    super.initState();
+    controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(NavigationDelegate(
+        onNavigationRequest: (request) {
+          final uri = Uri.tryParse(request.url);
+          return uri != null && uri.scheme == 'https'
+              ? NavigationDecision.navigate : NavigationDecision.prevent;
+        },
+      ))
+      ..loadRequest(Uri.parse(widget.url));
+  }
+  @override
+  Widget build(BuildContext context) => WebViewWidget(controller: controller);
+}
+
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
 
@@ -272,6 +322,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   int? wpSelectedCategory;
   String? wpSelectedTitle;
   String wpSelectedType = 'category';
+  Map<String, dynamic>? selectedItem;
+  String? checkoutUrl;
   static const String _site = 'https://aytamaliraq.com';
 
   Future<void> _loadWordPressCategories({bool silent = false}) async {
@@ -311,7 +363,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   }
 
   void _openWordPressCategory(int id, String title, String type) {
-    setState(() { wpSelectedCategory = id; wpSelectedTitle = title; wpSelectedType = type; page = 0; customPage = null; });
+    setState(() { selectedItem = null; checkoutUrl = null; wpSelectedCategory = id; wpSelectedTitle = title; wpSelectedType = type; page = 0; customPage = null; });
   }
 
   String _plainText(String html) => html
@@ -321,6 +373,42 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       .replaceAll('&#039;', "'")
       .replaceAll('&nbsp;', ' ');
 
+  Widget _inAppDetails() {
+    final item = selectedItem!;
+    final isProduct = wpSelectedType == 'product_cat';
+    final title = isProduct ? (item['name'] ?? '').toString()
+        : _plainText((item['title']?['rendered'] ?? '').toString());
+    final content = isProduct ? (item['full_description'] ?? item['description'] ?? '').toString()
+        : (item['content']?['rendered'] ?? '').toString();
+    final image = (item['image'] ?? '').toString();
+    final price = (item['price'] ?? '').toString();
+    final link = (item['link'] ?? '').toString();
+    final uri = Uri.tryParse(link);
+    final valid = uri != null && uri.scheme == 'https' &&
+        (uri.host == 'aytamaliraq.com' || uri.host == 'www.aytamaliraq.com');
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      TextButton.icon(onPressed: () => setState(() => selectedItem = null),
+        icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التصنيف')),
+      if (image.isNotEmpty) ClipRRect(borderRadius: BorderRadius.circular(14),
+        child: Image.network(image, height: 240, fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 60))),
+      const SizedBox(height: 12),
+      Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      if (price.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(_plainText(price), style: const TextStyle(fontSize: 19, color: green))),
+      if (content.isNotEmpty) SizedBox(height: 420, child: _HtmlContent(content: content)),
+      if (isProduct) FilledButton.icon(
+        onPressed: valid ? () => setState(() => checkoutUrl = link) : null,
+        icon: const Icon(Icons.volunteer_activism), label: const Text('تبرع الآن')),
+    ]);
+  }
+
+  Widget _inAppCheckout() => Column(children: [
+    TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
+      icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التفاصيل')),
+    Expanded(child: _CheckoutContent(url: checkoutUrl!)),
+  ]);
+
   Widget _wordPressPosts() {
     final id = wpSelectedCategory!;
     final isProducts = wpSelectedType == 'product_cat';
@@ -328,7 +416,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       key: ValueKey(id),
       future: http.get(Uri.parse(isProducts
         ? '$_site/wp-json/altaawun/v1/products?category=$id'
-        : '$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_fields=id,title,excerpt,date')).timeout(const Duration(seconds: 15)),
+        : '$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_fields=id,title,excerpt,content,date')).timeout(const Duration(seconds: 15)),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
@@ -351,9 +439,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
               padding: EdgeInsets.all(28), child: Center(child: Text('لا توجد مقالات في هذا التصنيف حاليًا'))),
             for (final post in posts)
               Card(child: ListTile(
-                onTap: isProducts ? () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => ProductDetailScreen(
-                    product: Map<String, dynamic>.from(post as Map)))) : null,
+                onTap: () => setState(() => selectedItem = Map<String, dynamic>.from(post as Map)),
                 leading: isProducts && (post['image'] ?? '').toString().isNotEmpty
                   ? Image.network(post['image'].toString(), width: 56, height: 56,
                       fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag))
@@ -596,7 +682,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     );
   }
 
-  void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; });
+  void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; });
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -629,7 +715,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           ),
       ])),
     ]))),
-    body: wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : _section(),
+    body: checkoutUrl != null ? _inAppCheckout() : selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : _section(),
     bottomNavigationBar: NavigationBar(
       height: 72,
       selectedIndex: [0, 1, 4, 3, 6].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 6].indexOf(page),
