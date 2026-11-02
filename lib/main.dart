@@ -141,7 +141,7 @@ class _HtmlContentState extends State<_HtmlContent> {
 }
 class _CheckoutContent extends StatefulWidget {
   final String url;
-  const _CheckoutContent({required this.url});
+  const _CheckoutContent({super.key, required this.url});
   @override
   State<_CheckoutContent> createState() => _CheckoutContentState();
 }
