@@ -22,6 +22,8 @@ jobs:
           cache: true
       - name: Generate Android project
         run: flutter create --platforms=android --project-name altaawun_charity_app .
+      - name: Configure Arabic app name
+        run: bash tool/configure_app_name.sh
       - name: Install dependencies
         run: flutter pub get
       - name: Static analysis
