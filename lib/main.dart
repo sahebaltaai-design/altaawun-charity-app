@@ -115,10 +115,10 @@ class _CharityShellState extends State<CharityShell> {
       onDestinationSelected: (index) => go([0, 1, 4, 3, 6][index]),
       destinations: const [
         NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
-        NavigationDestination(icon: Icon(Icons.favorite_border), label: 'تبرع'),
+        NavigationDestination(icon: Icon(Icons.favorite_border), label: 'الكفالات'),
         NavigationDestination(icon: Icon(Icons.article_outlined), label: 'الأخبار'),
-        NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), label: 'المزيد'),
-        NavigationDestination(icon: Icon(Icons.person_outline), label: 'حسابي'),
+        NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), label: 'التبرعات'),
+        NavigationDestination(icon: Icon(Icons.person_outline), label: 'الجمعية'),
       ],
     ),
   );
