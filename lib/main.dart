@@ -181,7 +181,7 @@ class _CharityShellState extends State<CharityShell> {
           ),
       ])),
     ]))),
-    body: page == 0 ? _home() : _section(),
+    body: page == 0 ? _home() : page == 4 ? _newsPage() : _section(),
     bottomNavigationBar: NavigationBar(
       height: 72,
       selectedIndex: [0, 1, 4, 3, 6].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 6].indexOf(page),
@@ -201,48 +201,55 @@ class _CharityShellState extends State<CharityShell> {
     Icons.article, Icons.photo_library, Icons.menu_book,
   ];
 
-  Widget _home() => ListView(padding: const EdgeInsets.all(12), children: [
-    Container(
-      height: 230, padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF00542B), Color(0xFF087D3D)]),
-        borderRadius: BorderRadius.circular(18),
+  Widget _home() => ListView(padding: EdgeInsets.zero, children: [
+    SizedBox(height: 260, child: Stack(fit: StackFit.expand, children: [
+      Image.network(
+        'https://raw.githubusercontent.com/sahebaltaai-design/altaawun-charity-app/main/assets/images/home_hero.jpg',
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [Color(0xFF194B2F), Color(0xFF00642D)]))),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Spacer(),
-        const Text('بكفالتك\nنمنحهم\nمستقبلًا أفضل',
-          style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.w900, height: 1.25)),
-        const Spacer(),
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.white)),
-          onPressed: () => go(1), icon: const Icon(Icons.favorite_border), label: const Text('كفالة يتيم'),
-        ),
+      const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+        begin: Alignment.centerLeft, end: Alignment.centerRight,
+        colors: [Colors.transparent, Color(0xE8004C29)]))),
+      Positioned(top: 28, right: 18, child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: const [
+          Text('بكفالتك\nنمنحهم\nمستقبلًا أفضل',
+            style: TextStyle(fontSize: 29, color: Colors.white, fontWeight: FontWeight.w900, height: 1.3)),
+        ],
+      )),
+      Positioned(bottom: 18, right: 18, child: FilledButton.icon(
+        onPressed: () => go(1),
+        style: FilledButton.styleFrom(backgroundColor: green, side: const BorderSide(color: Colors.white)),
+        icon: const Icon(Icons.favorite_border), label: const Text('كفالة يتيم',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+      )),
+    ])),
+    Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+      GridView.count(
+        shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: .93,
+        children: [
+          _shortcut(Icons.school, 'المدرسة\\nوالتعليم', 2),
+          _shortcut(Icons.groups, 'كفالة الأيتام', 1),
+          _shortcut(Icons.volunteer_activism, 'التبرعات\\nوالمساهمات', 3, color: red),
+          _shortcut(Icons.photo_library, 'الصور\\nوالفيديوهات', 5),
+          _shortcut(Icons.article, 'الأخبار\\nوالأنشطة', 4, color: red),
+          _shortcut(Icons.menu_book, 'عن الجمعية', 6),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        const Text('أحدث الأخبار', style: TextStyle(color: deepGreen, fontSize: 22, fontWeight: FontWeight.w900)),
+        TextButton(onPressed: () => go(4), child: const Text('عرض الكل')),
       ]),
-    ),
-    const SizedBox(height: 14),
-    GridView.count(
-      shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: .95,
-      children: [
-        _shortcut(Icons.school, 'المدرسة\nوالتعليم', 2),
-        _shortcut(Icons.groups, 'كفالة الأيتام', 1),
-        _shortcut(Icons.volunteer_activism, 'التبرعات\nوالمساهمات', 3, color: red),
-        _shortcut(Icons.photo_library, 'الصور\nوالفيديوهات', 5),
-        _shortcut(Icons.article, 'الأخبار\nوالأنشطة', 4, color: red),
-        _shortcut(Icons.menu_book, 'عن الجمعية', 6),
-      ],
-    ),
-    const SizedBox(height: 20),
-    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      const Text('أحدث الأخبار', style: TextStyle(color: deepGreen, fontSize: 21, fontWeight: FontWeight.w900)),
-      TextButton(onPressed: () => go(4), child: const Text('عرض الكل')),
-    ]),
-    Card(child: ListTile(
-      leading: const Icon(Icons.article, color: green, size: 35),
-      title: const Text('أخبار وأنشطة الجمعية', style: TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: const Text('ستظهر آخر الأخبار المنشورة بعد ربط الموقع'),
-      onTap: () => go(4),
-    )),
+      Card(child: ListTile(
+        leading: const Icon(Icons.article, color: green, size: 35),
+        title: const Text('أخبار وأنشطة الجمعية', style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('ستظهر الأخبار الرسمية بعد ربط الموقع'),
+        onTap: () => go(4),
+      )),
+    ])),
   ]);
 
   Widget _shortcut(IconData icon, String title, int destination, {Color color = green}) =>
