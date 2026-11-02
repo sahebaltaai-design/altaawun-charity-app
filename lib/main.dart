@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 
 void main() => runApp(const AltaawunApp());
@@ -165,6 +166,127 @@ class CharityShell extends StatefulWidget {
 class _CharityShellState extends State<CharityShell> {
   int page = 0;
   final names = const ['الرئيسية', 'كفالة الأيتام', 'المدرسة والتعليم', 'التبرعات والمساهمات', 'الأخبار والأنشطة', 'الصور والفيديوهات', 'عن الجمعية'];
+  static const _defaultCategoryOrder = [2, 1, 3, 5, 4, 6];
+  static const _categoryLabels = {
+    2: 'المدرسة والتعليم', 1: 'كفالة الأيتام',
+    3: 'التبرعات والمساهمات', 5: 'الصور والفيديوهات',
+    4: 'الأخبار والأنشطة', 6: 'عن الجمعية',
+  };
+  static const _categoryIcons = {
+    2: Icons.school, 1: Icons.groups, 3: Icons.volunteer_activism,
+    5: Icons.photo_library, 4: Icons.article, 6: Icons.menu_book,
+  };
+  List<int> categoryOrder = List.of(_defaultCategoryOrder);
+  Set<int> hiddenCategories = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCategorySettings();
+  }
+
+  Future<void> _loadCategorySettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedOrder = prefs.getStringList('home_category_order');
+    final parsed = savedOrder?.map(int.tryParse).whereType<int>().toList();
+    final savedHidden = prefs.getStringList('home_category_hidden') ?? [];
+    if (!mounted) return;
+    setState(() {
+      if (parsed != null && parsed.length == 6 &&
+          parsed.toSet().containsAll(_defaultCategoryOrder) &&
+          parsed.toSet().length == 6) {
+        categoryOrder = parsed;
+      }
+      hiddenCategories = savedHidden.map(int.tryParse).whereType<int>()
+          .where(_defaultCategoryOrder.contains).toSet();
+    });
+  }
+
+  Future<void> _saveCategorySettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('home_category_order',
+        categoryOrder.map((id) => '$id').toList());
+    await prefs.setStringList('home_category_hidden',
+        hiddenCategories.map((id) => '$id').toList());
+  }
+
+  void _manageCategories() {
+    showModalBottomSheet<void>(
+      context: context, isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, refreshSheet) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .76,
+            child: Column(children: [
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Text('إدارة تصنيفات الصفحة الرئيسية',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              ),
+              const Text('اسحب علامة الترتيب، أو أخفِ التصنيف بالمفتاح'),
+              Expanded(child: ReorderableListView.builder(
+                buildDefaultDragHandles: false,
+                itemCount: categoryOrder.length,
+                onReorder: (oldIndex, newIndex) {
+                  refreshSheet(() {
+                    if (newIndex > oldIndex) newIndex--;
+                    final item = categoryOrder.removeAt(oldIndex);
+                    categoryOrder.insert(newIndex, item);
+                  });
+                  setState(() {});
+                  _saveCategorySettings();
+                },
+                itemBuilder: (context, index) {
+                  final id = categoryOrder[index];
+                  return ListTile(
+                    key: ValueKey(id),
+                    leading: ReorderableDragStartListener(
+                      index: index,
+                      child: const Icon(Icons.drag_handle, color: green)),
+                    title: Text(_categoryLabels[id]!),
+                    trailing: Switch(
+                      value: !hiddenCategories.contains(id),
+                      onChanged: (visible) {
+                        refreshSheet(() {
+                          if (visible) {
+                            hiddenCategories.remove(id);
+                          } else {
+                            hiddenCategories.add(id);
+                          }
+                        });
+                        setState(() {});
+                        _saveCategorySettings();
+                      },
+                    ),
+                  );
+                },
+              )),
+              Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+                TextButton(
+                  onPressed: () {
+                    refreshSheet(() {
+                      categoryOrder = List.of(_defaultCategoryOrder);
+                      hiddenCategories.clear();
+                    });
+                    setState(() {});
+                    _saveCategorySettings();
+                  },
+                  child: const Text('استعادة الترتيب الافتراضي'),
+                ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: const Text('تم'),
+                ),
+              ])),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
   void go(int value) => setState(() => page = value);
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -184,6 +306,12 @@ class _CharityShellState extends State<CharityShell> {
       Container(width: double.infinity, padding: const EdgeInsets.all(24), color: green,
         child: const Column(children: [_Emblem(size: 76), SizedBox(height: 12),
           Text('جمعية التعاون الخيرية', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold))])),
+      ListTile(
+        leading: const Icon(Icons.tune, color: green),
+        title: const Text('إدارة التصنيفات'),
+        subtitle: const Text('ترتيب وإظهار وإخفاء أقسام الصفحة الرئيسية'),
+        onTap: () { Navigator.pop(context); _manageCategories(); },
+      ),
       Expanded(child: ListView(children: [
         for (var i = 0; i < names.length; i++)
           ListTile(
@@ -241,12 +369,10 @@ class _CharityShellState extends State<CharityShell> {
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: .93,
         children: [
-          _shortcut(Icons.school, 'المدرسة\nوالتعليم', 2),
-          _shortcut(Icons.groups, 'كفالة الأيتام', 1),
-          _shortcut(Icons.volunteer_activism, 'التبرعات\nوالمساهمات', 3, color: red),
-          _shortcut(Icons.photo_library, 'الصور\nوالفيديوهات', 5),
-          _shortcut(Icons.article, 'الأخبار\nوالأنشطة', 4, color: red),
-          _shortcut(Icons.menu_book, 'عن الجمعية', 6),
+          for (final id in categoryOrder)
+            if (!hiddenCategories.contains(id))
+              _shortcut(_categoryIcons[id]!, _categoryLabels[id]!, id,
+                  color: (id == 3 || id == 4) ? red : green),
         ],
       ),
       const SizedBox(height: 12),
