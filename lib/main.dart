@@ -1,155 +1,151 @@
 import 'package:flutter/material.dart';
 
-void main() => runApp(const AltaawunApp());
+void main() => runApp(const CharityApp());
 
-const _green = Color(0xFF155D50);
-const _gold = Color(0xFFD5AC60);
-const _cream = Color(0xFFF8F6F0);
+const forest = Color(0xFF124D43);
+const gold = Color(0xFFC99B48);
+const background = Color(0xFFF7F5F0);
 
-class AltaawunApp extends StatelessWidget {
-  const AltaawunApp({super.key});
-
+class CharityApp extends StatelessWidget {
+  const CharityApp({super.key});
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'جمعية التعاون الخيرية',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: _green),
-        scaffoldBackgroundColor: _cream,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: _green,
-          foregroundColor: Colors.white,
-          centerTitle: true,
+  Widget build(BuildContext context) => MaterialApp(
+    title: 'جمعية التعاون الخيرية',
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(
+      useMaterial3: true,
+      scaffoldBackgroundColor: background,
+      colorScheme: ColorScheme.fromSeed(seedColor: forest),
+      appBarTheme: const AppBarTheme(backgroundColor: forest, foregroundColor: Colors.white),
+    ),
+    builder: (context, child) => Directionality(
+      textDirection: TextDirection.rtl,
+      child: child ?? const SizedBox.shrink(),
+    ),
+    home: const CharityHome(),
+  );
+}
+
+class CharityHome extends StatefulWidget {
+  const CharityHome({super.key});
+  @override
+  State<CharityHome> createState() => _CharityHomeState();
+}
+
+class _CharityHomeState extends State<CharityHome> {
+  int tab = 0;
+  final titles = const ['الرئيسية', 'مدرسة الأيتام', 'الكفالات', 'التبرعات', 'عن الجمعية'];
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(titles[tab]), centerTitle: true),
+    body: IndexedStack(index: tab, children: [
+      _dashboard(),
+      _school(),
+      _sponsorship(),
+      _donations(),
+      _about(),
+    ]),
+    bottomNavigationBar: NavigationBar(
+      selectedIndex: tab,
+      onDestinationSelected: (index) => setState(() => tab = index),
+      destinations: const [
+        NavigationDestination(icon: Icon(Icons.home_outlined), label: 'الرئيسية'),
+        NavigationDestination(icon: Icon(Icons.school_outlined), label: 'المدرسة'),
+        NavigationDestination(icon: Icon(Icons.favorite_outline), label: 'الكفالات'),
+        NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), label: 'تبرع'),
+        NavigationDestination(icon: Icon(Icons.info_outline), label: 'الجمعية'),
+      ],
+    ),
+  );
+
+  Widget _dashboard() => ListView(padding: const EdgeInsets.all(18), children: [
+    Container(
+      padding: const EdgeInsets.all(26),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(colors: [forest, Color(0xFF20705E)]),
+        borderRadius: BorderRadius.circular(26),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.auto_awesome, color: gold, size: 38),
+        const SizedBox(height: 18),
+        const Text('معًا نرسم مستقبلًا مشرقًا', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+        const SizedBox(height: 10),
+        const Text('التعليم والرعاية والكفالة لأطفالنا الأيتام', style: TextStyle(color: Colors.white, fontSize: 16)),
+        const SizedBox(height: 18),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: gold, foregroundColor: Colors.black87),
+          onPressed: () => setState(() => tab = 2),
+          child: const Text('اكتشف برنامج الكفالة'),
         ),
-      ),
-      builder: (context, child) => Directionality(
-        textDirection: TextDirection.rtl,
-        child: child ?? const SizedBox.shrink(),
-      ),
-      home: const HomeScreen(),
-    );
-  }
-}
+      ]),
+    ),
+    const SizedBox(height: 26),
+    const Text('مجالات العطاء', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 10),
+    _tile(Icons.school_outlined, 'مدرسة الأيتام', 'تعليم ورعاية وتنمية مهارات', 1),
+    _tile(Icons.favorite_outline, 'برنامج الكفالة', 'دعم مستمر وكرامة محفوظة', 2),
+    _tile(Icons.volunteer_activism_outlined, 'المساهمة بالتبرعات', 'قريبًا عبر بوابة دفع آمنة', 3),
+  ]);
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  Widget _tile(IconData icon, String title, String subtitle, int index) => Card(
+    margin: const EdgeInsets.only(bottom: 12),
+    child: ListTile(
+      contentPadding: const EdgeInsets.all(16),
+      leading: CircleAvatar(backgroundColor: forest.withValues(alpha: .09), child: Icon(icon, color: forest)),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_left),
+      onTap: () => setState(() => tab = index),
+    ),
+  );
 
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  int selected = 0;
-
-  static const titles = [
-    'الرئيسية',
-    'مدرسة الأيتام',
-    'الكفالات',
-    'التبرعات',
-    'عن الجمعية',
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(titles[selected])),
-      body: SafeArea(
-        child: selected == 0 ? _home() : _section(selected),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selected,
-        onDestinationSelected: (value) => setState(() => selected = value),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'الرئيسية'),
-          NavigationDestination(icon: Icon(Icons.school_outlined), label: 'المدرسة'),
-          NavigationDestination(icon: Icon(Icons.favorite_border), label: 'الكفالات'),
-          NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), label: 'التبرع'),
-          NavigationDestination(icon: Icon(Icons.info_outline), label: 'الجمعية'),
-        ],
-      ),
-    );
-  }
-
-  Widget _home() => ListView(
+  Widget _page(IconData icon, String heading, String description, List<Widget> extra) => ListView(
     padding: const EdgeInsets.all(20),
     children: [
-      Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: _green,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.volunteer_activism, color: _gold, size: 42),
-            SizedBox(height: 18),
-            Text('جمعية التعاون الخيرية',
-                style: TextStyle(color: Colors.white, fontSize: 27, fontWeight: FontWeight.bold)),
-            SizedBox(height: 10),
-            Text('معًا نصنع مستقبلًا أفضل لأطفالنا الأيتام',
-                style: TextStyle(color: Colors.white, fontSize: 16)),
-          ],
-        ),
-      ),
-      const SizedBox(height: 24),
-      const Text('خدماتنا', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 16),
+      Center(child: CircleAvatar(radius: 43, backgroundColor: forest.withValues(alpha: .10), child: Icon(icon, color: forest, size: 44))),
+      const SizedBox(height: 22),
+      Text(heading, textAlign: TextAlign.center, style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
-      _service(Icons.school_outlined, 'مدرسة الأيتام', 'التعليم والرعاية والتطوير', 1),
-      _service(Icons.favorite_border, 'كفالة يتيم', 'ساهم في دعم طفل محتاج', 2),
-      _service(Icons.volunteer_activism_outlined, 'التبرع', 'شارك في صناعة الأثر', 3),
-      _service(Icons.info_outline, 'عن الجمعية', 'تعرف على رسالتنا', 4),
+      Text(description, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, height: 1.7)),
+      const SizedBox(height: 24),
+      ...extra,
     ],
   );
 
-  Widget _service(IconData icon, String title, String subtitle, int index) =>
-      Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        child: ListTile(
-          contentPadding: const EdgeInsets.all(14),
-          leading: CircleAvatar(
-            backgroundColor: _green.withValues(alpha: 0.1),
-            child: Icon(icon, color: _green),
-          ),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_left),
-          onTap: () => setState(() => selected = index),
-        ),
-      );
+  Widget _school() => _page(Icons.school_outlined, 'مدرسة الأيتام',
+    'بيئة تعليمية آمنة تدعم الأطفال علميًا وتربويًا وتمنحهم فرصًا أفضل للمستقبل.', [
+      _info('البرامج التعليمية', 'ستُعرض البرامج المعتمدة بعد إدخال بيانات المدرسة.'),
+      _info('الأنشطة والأخبار', 'ستُنشر الأخبار والأنشطة من لوحة إدارة الجمعية.'),
+    ]);
 
-  Widget _section(int index) {
-    final descriptions = [
-      '',
-      'مساحة لعرض برامج المدرسة، الأنشطة التعليمية والأخبار.',
-      'ستظهر هنا حالات الكفالة المعتمدة بعد مراجعة الجمعية والموافقات اللازمة لحماية خصوصية الأطفال.',
-      'سيُفعّل التبرع الإلكتروني بعد إعداد بوابة دفع آمنة والتحقق من متطلبات التشغيل.',
-      'جمعية التعاون الخيرية — لخدمة الأيتام ودعم تعليمهم ورعايتهم.',
-    ];
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              [Icons.home, Icons.school, Icons.favorite, Icons.volunteer_activism, Icons.info][index],
-              size: 72,
-              color: _green,
-            ),
-            const SizedBox(height: 20),
-            Text(titles[index], style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            Text(descriptions[index], textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
-            if (index == 4) ...[
-              const SizedBox(height: 16),
-              const SelectableText('aytamaliraq.com', style: TextStyle(color: _green)),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _sponsorship() => _page(Icons.favorite_outline, 'كفالة الأيتام',
+    'ساهم في دعم التعليم والرعاية والاحتياجات الأساسية عبر برنامج كفالة شفاف.', [
+      _info('حالات الكفالة', 'ستظهر الحالات بعد اعتمادها من الجمعية. لن تُنشر بيانات الأطفال الحساسة أو صورهم دون موافقات مناسبة.'),
+      _info('متابعة الكفالة', 'سيُتاح للكافل متابعة حالة مساهمته بعد بناء نظام الحسابات الآمن.'),
+    ]);
+
+  Widget _donations() => _page(Icons.volunteer_activism_outlined, 'التبرعات الإلكترونية',
+    'نعمل على تجهيز التبرع من العراق وخارجه باستخدام مزوّد دفع معتمد.', [
+      _info('الدفع غير مفعّل حاليًا', 'لن نجمع أرقام البطاقات أو أي بيانات مالية داخل هذه النسخة التجريبية.'),
+      _info('الإيصالات', 'ستُضاف إيصالات التبرع وسجل العمليات بعد ربط نظام الدفع.'),
+    ]);
+
+  Widget _about() => _page(Icons.info_outline, 'جمعية التعاون الخيرية',
+    'نسعى إلى دعم الأيتام ورعايتهم وتعليمهم بالشراكة مع أهل الخير.', [
+      _info('الموقع الإلكتروني', 'aytamaliraq.com'),
+      _info('تنويه', 'هذه نسخة تطوير أولية، والمحتوى التشغيلي يخضع لاعتماد الجمعية.'),
+    ]);
+
+  Widget _info(String title, String detail) => Card(
+    margin: const EdgeInsets.only(bottom: 12),
+    child: Padding(padding: const EdgeInsets.all(18), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: forest)),
+        const SizedBox(height: 8),
+        Text(detail, style: const TextStyle(fontSize: 15, height: 1.6)),
+      ],
+    )),
+  );
 }
