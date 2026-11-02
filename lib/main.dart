@@ -187,6 +187,7 @@ class _CharityShellState extends State<CharityShell> {
   String? wpError;
   int? wpSelectedCategory;
   String? wpSelectedTitle;
+  String wpSelectedType = 'category';
   static const String _site = 'https://aytamaliraq.com';
 
   Future<void> _loadWordPressCategories() async {
@@ -203,7 +204,7 @@ class _CharityShellState extends State<CharityShell> {
       final categories = <Map<String, dynamic>>[];
       for (final item in decoded['categories'] as List) {
         if (item is Map && item['id'] is num && item['name'] is String) {
-          categories.add({'id': (item['id'] as num).toInt(), 'name': item['name'] as String});
+          categories.add({'id': (item['id'] as num).toInt(), 'name': item['name'] as String, 'type': item['type'] == 'product_cat' ? 'product_cat' : 'category'});
         }
       }
       if (!mounted) return;
@@ -214,8 +215,8 @@ class _CharityShellState extends State<CharityShell> {
     }
   }
 
-  void _openWordPressCategory(int id, String title) {
-    setState(() { wpSelectedCategory = id; wpSelectedTitle = title; page = 0; customPage = null; });
+  void _openWordPressCategory(int id, String title, String type) {
+    setState(() { wpSelectedCategory = id; wpSelectedTitle = title; wpSelectedType = type; page = 0; customPage = null; });
   }
 
   String _plainText(String html) => html
@@ -227,9 +228,12 @@ class _CharityShellState extends State<CharityShell> {
 
   Widget _wordPressPosts() {
     final id = wpSelectedCategory!;
+    final isProducts = wpSelectedType == 'product_cat';
     return FutureBuilder<http.Response>(
       key: ValueKey(id),
-      future: http.get(Uri.parse('$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_fields=id,title,excerpt,date')).timeout(const Duration(seconds: 15)),
+      future: http.get(Uri.parse(isProducts
+        ? '$_site/wp-json/altaawun/v1/products?category=$id'
+        : '$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_fields=id,title,excerpt,date')).timeout(const Duration(seconds: 15)),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
@@ -242,7 +246,8 @@ class _CharityShellState extends State<CharityShell> {
           ]));
         }
         try {
-          final posts = jsonDecode(utf8.decode(snapshot.data!.bodyBytes)) as List;
+          final decoded = jsonDecode(utf8.decode(snapshot.data!.bodyBytes));
+          final posts = isProducts ? (decoded['products'] as List) : (decoded as List);
           return ListView(children: [
             ListTile(title: Text(wpSelectedTitle ?? 'التصنيف',
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 21)),
@@ -251,9 +256,18 @@ class _CharityShellState extends State<CharityShell> {
               padding: EdgeInsets.all(28), child: Center(child: Text('لا توجد مقالات في هذا التصنيف حاليًا'))),
             for (final post in posts)
               Card(child: ListTile(
-                title: Text(_plainText((post['title']?['rendered'] ?? '').toString()),
+                leading: isProducts && (post['image'] ?? '').toString().isNotEmpty
+                  ? Image.network(post['image'].toString(), width: 56, height: 56,
+                      fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag))
+                  : Icon(isProducts ? Icons.shopping_bag : Icons.article, color: green),
+                title: Text(isProducts
+                    ? (post['name'] ?? '').toString()
+                    : _plainText((post['title']?['rendered'] ?? '').toString()),
                   style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text(_plainText((post['excerpt']?['rendered'] ?? '').toString()),
+                subtitle: Text(isProducts
+                    ? [(post['description'] ?? '').toString(), (post['price'] ?? '').toString()]
+                        .where((x) => x.isNotEmpty).join(' — ')
+                    : _plainText((post['excerpt']?['rendered'] ?? '').toString()),
                   maxLines: 3, overflow: TextOverflow.ellipsis),
               )),
           ]);
@@ -561,7 +575,8 @@ class _CharityShellState extends State<CharityShell> {
               child: InkWell(
                 borderRadius: BorderRadius.circular(14),
                 onTap: () => _openWordPressCategory(
-                    category['id'] as int, category['name'] as String),
+                    category['id'] as int, category['name'] as String,
+                    category['type'] as String),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   const Icon(Icons.folder_open, size: 36, color: green),
                   const SizedBox(height: 9),
