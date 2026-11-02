@@ -1,0 +1,23 @@
+name: Package WordPress Notifications Plugin
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'wordpress-plugin/altaawun-notifications.php'
+      - '.github/workflows/package-wordpress-plugin.yml'
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package installable plugin ZIP
+        run: |
+          mkdir -p dist/altaawun-notifications
+          cp wordpress-plugin/altaawun-notifications.php dist/altaawun-notifications/altaawun-notifications.php
+          cd dist
+          zip -r altaawun-notifications-v1.2.3.zip altaawun-notifications
+      - uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-notifications-v1.2.3
+          path: dist/altaawun-notifications-v1.2.3.zip
