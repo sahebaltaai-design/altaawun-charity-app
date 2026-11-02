@@ -26,39 +26,112 @@ class AltaawunApp extends StatelessWidget {
 
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    body: Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
-          colors: [Color(0xFFDAF4FC), Colors.white, Color(0xFFB8DDC4), deepGreen]),
-      ),
-      child: SafeArea(child: Column(children: [
-        const Spacer(),
-        const _Emblem(size: 114),
-        const SizedBox(height: 20),
-        const Text('جمعية التعاون الخيرية', style: TextStyle(color: deepGreen, fontSize: 29, fontWeight: FontWeight.w900)),
-        const Text('مدرسة الأيتام وكفالتهم', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
-        const SizedBox(height: 12),
-        const Text('www.aytamaliraq.com', style: TextStyle(color: green, fontSize: 15)),
-        const Spacer(),
-        const Icon(Icons.school_rounded, color: deepGreen, size: 100),
-        const SizedBox(height: 14),
-        const Text('معًا .. نصنع لهم مستقبلًا أفضل', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 20),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 35), child: SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: deepGreen, padding: const EdgeInsets.all(16)),
-            onPressed: () => Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const CharityShell())),
-            child: const Text('الدخول إلى التطبيق', style: TextStyle(fontWeight: FontWeight.bold)),
+    body: LayoutBuilder(builder: (context, constraints) => Stack(
+      fit: StackFit.expand,
+      children: [
+        const DecoratedBox(decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: [0, .43, .74, 1],
+            colors: [Color(0xFF79D6F1), Color(0xFFF9FAF1), Color(0xFF80BD7C), deepGreen],
           ),
         )),
-        const SizedBox(height: 24),
-      ])),
-    ),
+        Positioned(top: constraints.maxHeight * .39, left: 0, right: 0,
+          height: constraints.maxHeight * .40,
+          child: const _SchoolIllustration()),
+        Positioned(top: constraints.maxHeight * .67, left: -30, right: -30,
+          child: Transform.rotate(angle: -.10, child: Container(
+            height: 26, decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: [green, Colors.white, red, Colors.white, green]),
+            ),
+          )),
+        ),
+        SafeArea(child: Column(children: [
+          SizedBox(height: constraints.maxHeight * .07),
+          const _Emblem(size: 116),
+          const SizedBox(height: 15),
+          const FittedBox(fit: BoxFit.scaleDown, child: Text(
+            'جمعية التعاون الخيرية',
+            style: TextStyle(color: deepGreen, fontSize: 30, fontWeight: FontWeight.w900),
+          )),
+          const SizedBox(height: 8),
+          const Text('مدرسة الأيتام وكفالتهم',
+            style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          const Text('www.aytamaliraq.com',
+            style: TextStyle(color: green, fontSize: 16, fontWeight: FontWeight.w600)),
+          const Spacer(),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 32), child: SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (_) => const CharityShell())),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white, foregroundColor: deepGreen,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              ),
+              icon: const Icon(Icons.login),
+              label: const Text('الدخول إلى التطبيق',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+            ),
+          )),
+          const SizedBox(height: 17),
+          const Text('معًا .. نصنع لهم مستقبلًا أفضل',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 26),
+        ])),
+      ],
+    )),
   );
+}
+
+class _SchoolIllustration extends StatelessWidget {
+  const _SchoolIllustration();
+  @override
+  Widget build(BuildContext context) => Stack(children: [
+    Positioned.fill(child: CustomPaint(painter: _SchoolPainter())),
+    const Positioned(left: 15, bottom: 22,
+      child: Icon(Icons.park, color: Color(0xFF318D45), size: 86)),
+    const Positioned(right: 8, bottom: 20,
+      child: Icon(Icons.park, color: Color(0xFF318D45), size: 96)),
+    const Positioned(left: 55, right: 55, bottom: 8,
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+        Icon(Icons.backpack, color: Color(0xFF194A75), size: 48),
+        Icon(Icons.backpack, color: Color(0xFF194A75), size: 52),
+        Icon(Icons.backpack, color: Color(0xFF194A75), size: 46),
+        Icon(Icons.backpack, color: Color(0xFF194A75), size: 50),
+      ])),
+  ]);
+}
+
+class _SchoolPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final wall = Paint()..color = const Color(0xFFF0D7AE);
+    final outline = Paint()..color = const Color(0xFFCAAC81);
+    canvas.drawRect(Rect.fromLTWH(w * .10, h * .20, w * .80, h * .52), wall);
+    canvas.drawRect(Rect.fromLTWH(w * .28, h * .11, w * .44, h * .61), wall);
+    canvas.drawRect(Rect.fromLTWH(w * .26, h * .10, w * .48, h * .035), outline);
+    for (var i = 0; i < 7; i++) {
+      final x = w * (.16 + i * .115);
+      canvas.drawRect(Rect.fromLTWH(x, h * .33, w * .062, h * .13),
+        Paint()..color = const Color(0xFF74B5D0));
+    }
+    canvas.drawRect(Rect.fromLTWH(w * .44, h * .43, w * .12, h * .29),
+      Paint()..color = const Color(0xFF5E8B96));
+    canvas.drawRect(Rect.fromLTWH(w * .47, h * .17, w * .06, h * .09),
+      Paint()..color = red);
+    canvas.drawRect(Rect.fromLTWH(w * .08, h * .71, w * .84, h * .025),
+      Paint()..color = const Color(0xFFB9C49C));
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _Emblem extends StatelessWidget {
