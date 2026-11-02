@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -246,7 +247,9 @@ class CharityShell extends StatefulWidget {
   State<CharityShell> createState() => _CharityShellState();
 }
 
-class _CharityShellState extends State<CharityShell> {
+class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver {
+  Timer? _categoriesTimer;
+  bool _fetchingCategories = false;
   int page = 0;
   final names = const ['الرئيسية', 'كفالة الأيتام', 'المدرسة والتعليم', 'التبرعات والمساهمات', 'الأخبار والأنشطة', 'الصور والفيديوهات', 'عن الجمعية'];
   static const _defaultCategoryOrder = [2, 1, 3, 5, 4, 6];
@@ -271,8 +274,10 @@ class _CharityShellState extends State<CharityShell> {
   String wpSelectedType = 'category';
   static const String _site = 'https://aytamaliraq.com';
 
-  Future<void> _loadWordPressCategories() async {
-    if (mounted) setState(() { wpLoading = true; wpError = null; });
+  Future<void> _loadWordPressCategories({bool silent = false}) async {
+    if (_fetchingCategories) return;
+    _fetchingCategories = true;
+    if (!silent && mounted) setState(() { wpLoading = true; wpError = null; });
     try {
       final response = await http.get(
         Uri.parse('$_site/wp-json/altaawun/v1/categories'),
@@ -289,10 +294,14 @@ class _CharityShellState extends State<CharityShell> {
         }
       }
       if (!mounted) return;
-      setState(() { wpCategories = categories; wpLoading = false; });
+      setState(() { wpCategories = categories; wpLoading = false; wpError = null; });
     } catch (_) {
       if (!mounted) return;
-      setState(() { wpError = 'تعذر تحميل تصنيفات الجمعية. تحقق من الاتصال بالإنترنت وحاول مرة أخرى.'; wpLoading = false; });
+      if (!silent || wpCategories.isEmpty) {
+        setState(() { wpError = 'تعذر تحميل تصنيفات الجمعية. تحقق من الاتصال بالإنترنت وحاول مرة أخرى.'; wpLoading = false; });
+      }
+    } finally {
+      _fetchingCategories = false;
     }
   }
 
@@ -367,7 +376,25 @@ class _CharityShellState extends State<CharityShell> {
   void initState() {
     super.initState();
     _loadCategorySettings();
+    WidgetsBinding.instance.addObserver(this);
     _loadWordPressCategories();
+    _categoriesTimer = Timer.periodic(const Duration(minutes: 2), (_) {
+      _loadWordPressCategories(silent: true);
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadWordPressCategories(silent: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _categoriesTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<void> _loadCategorySettings() async {
@@ -572,9 +599,9 @@ class _CharityShellState extends State<CharityShell> {
           Text('جمعية التعاون الخيرية', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold))])),
       ListTile(
         leading: const Icon(Icons.refresh, color: green),
-        title: const Text('تحديث تصنيفات ووردبريس'),
-        subtitle: const Text('يتم اختيار التصنيفات من لوحة إدارة الموقع'),
-        onTap: () { Navigator.pop(context); go(0); _loadWordPressCategories(); },
+        title: const Text('تصنيفات التطبيق'),
+        subtitle: const Text('تُحدّث تلقائيًا من لوحة إدارة الموقع'),
+        onTap: () { Navigator.pop(context); go(0); },
       ),
       Expanded(child: ListView(children: [
         for (var i = 0; i < names.length; i++)
@@ -688,8 +715,6 @@ class _CharityShellState extends State<CharityShell> {
         const Padding(padding: EdgeInsets.all(16),
           child: Text('لم يتم اختيار تصنيفات للتطبيق من لوحة ووردبريس بعد.',
             textAlign: TextAlign.center)),
-      TextButton.icon(onPressed: _loadWordPressCategories,
-        icon: const Icon(Icons.refresh), label: const Text('تحديث التصنيفات')),
       const SizedBox(height: 12),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         const Text('أحدث الأخبار', style: TextStyle(color: deepGreen, fontSize: 22, fontWeight: FontWeight.w900)),
