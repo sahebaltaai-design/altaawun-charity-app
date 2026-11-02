@@ -397,11 +397,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         : _plainText((item['title']?['rendered'] ?? '').toString());
     final content = isProduct ? (item['full_description'] ?? item['description'] ?? '').toString()
         : (item['content']?['rendered'] ?? '').toString();
-    final media = item['_embedded'] is Map
-        ? (item['_embedded']['wp:featuredmedia'] as List?) : null;
-    final featured = media != null && media.isNotEmpty && media.first is Map
-        ? (media.first['source_url'] ?? '').toString() : '';
-    final image = isProduct ? (item['image'] ?? '').toString() : featured;
+    final image = isProduct ? (item['image'] ?? '').toString() : _postImage(item);
     final price = (item['price'] ?? '').toString();
     final link = (item['link'] ?? '').toString();
     final uri = Uri.tryParse(link);
@@ -431,10 +427,31 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   ]);
 
   String _postImage(dynamic post) {
-    if (post is! Map || post['_embedded'] is! Map) return '';
-    final media = post['_embedded']['wp:featuredmedia'];
-    if (media is! List || media.isEmpty || media.first is! Map) return '';
-    return (media.first['source_url'] ?? '').toString();
+    if (post is! Map) return '';
+    final embedded = post['_embedded'];
+    if (embedded is Map) {
+      final media = embedded['wp:featuredmedia'];
+      if (media is List && media.isNotEmpty && media.first is Map) {
+        final image = (media.first['source_url'] ?? '').toString();
+        if (image.isNotEmpty) return image;
+      }
+    }
+    final content = (post['content'] is Map
+        ? (post['content']['rendered'] ?? '') : '').toString();
+    final match = RegExp(r'<img\\b[^>]*\\bsrc\\s*=\\s*["\\x27]([^"\\x27]+)',
+      caseSensitive: false).firstMatch(content);
+    final src = match?.group(1) ?? '';
+    if (src.startsWith('//')) return 'https:$src';
+    if (src.startsWith('/')) return '$_site$src';
+    return src.startsWith('https://') ? src : '';
+  }
+
+  bool _postHasVideo(dynamic post) {
+    if (post is! Map) return false;
+    final content = (post['content'] is Map
+        ? (post['content']['rendered'] ?? '') : '').toString();
+    return RegExp(r'<video\\b|<iframe\\b|youtube\\.com|youtu\\.be|vimeo\\.com|\\.mp4',
+      caseSensitive: false).hasMatch(content);
   }
 
   Widget _wordPressPosts() {
@@ -476,7 +493,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                           isProducts ? post['image'].toString() : _postImage(post),
                           width: 76, height: 76, fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, color: green)))
-                    : Icon(isProducts ? Icons.shopping_bag : Icons.article, color: green)),
+                    : Icon(isProducts ? Icons.shopping_bag : (_postHasVideo(post) ? Icons.play_circle_fill : Icons.article), color: green)),
                 title: Text(isProducts
                     ? (post['name'] ?? '').toString()
                     : _plainText((post['title']?['rendered'] ?? '').toString()),
