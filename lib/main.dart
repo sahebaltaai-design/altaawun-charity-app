@@ -438,19 +438,25 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     }
     final content = (post['content'] is Map
         ? (post['content']['rendered'] ?? '') : '').toString();
-    final match = RegExp(r'<img\\b[^>]*\\bsrc\\s*=\\s*["\\x27]([^"\\x27]+)',
+    final match = RegExp(r'''<img\b[^>]*\bsrc\s*=\s*["']([^"']+)''',
       caseSensitive: false).firstMatch(content);
-    final src = match?.group(1) ?? '';
+    final src = (match?.group(1) ?? '').replaceAll('&amp;', '&');
+    if (src.isEmpty) {
+      final youtube = RegExp(
+        r'''(?:youtube\.com/(?:embed/|watch\?v=)|youtu\.be/)([A-Za-z0-9_-]{11})''',
+        caseSensitive: false).firstMatch(content.replaceAll('&amp;', '&'));
+      if (youtube != null) return 'https://img.youtube.com/vi/${youtube.group(1)}/hqdefault.jpg';
+    }
     if (src.startsWith('//')) return 'https:$src';
     if (src.startsWith('/')) return '$_site$src';
-    return src.startsWith('https://') ? src : '';
+    return src.startsWith('https://') || src.startsWith('http://') ? src : '';
   }
 
   bool _postHasVideo(dynamic post) {
     if (post is! Map) return false;
     final content = (post['content'] is Map
         ? (post['content']['rendered'] ?? '') : '').toString();
-    return RegExp(r'<video\\b|<iframe\\b|youtube\\.com|youtu\\.be|vimeo\\.com|\\.mp4',
+    return RegExp(r'<video\b|<iframe\b|youtube\.com|youtu\.be|vimeo\.com|\.mp4',
       caseSensitive: false).hasMatch(content);
   }
 
