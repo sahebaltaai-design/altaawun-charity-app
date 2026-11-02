@@ -110,7 +110,8 @@ class _DonationWebScreenState extends State<DonationWebScreen> {
 
 class _HtmlContent extends StatefulWidget {
   final String content;
-  const _HtmlContent({required this.content});
+  final ValueChanged<String> onLink;
+  const _HtmlContent({required this.content, required this.onLink});
   @override
   State<_HtmlContent> createState() => _HtmlContentState();
 }
@@ -122,7 +123,13 @@ class _HtmlContentState extends State<_HtmlContent> {
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (_) => NavigationDecision.prevent,
+        onNavigationRequest: (request) {
+          final uri = Uri.tryParse(request.url);
+          if (uri != null && uri.scheme == 'https' && request.isMainFrame) {
+            widget.onLink(request.url);
+          }
+          return NavigationDecision.prevent;
+        },
       ));
     controller.loadHtmlString(
       '<html lang="ar" dir="rtl"><meta name="viewport" content="width=device-width,initial-scale=1">'
@@ -400,7 +407,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
       if (price.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(_plainText(price), style: const TextStyle(fontSize: 19, color: green))),
-      if (content.isNotEmpty) SizedBox(height: 420, child: _HtmlContent(content: content)),
+      if (content.isNotEmpty) SizedBox(height: 420, child: _HtmlContent(content: content, onLink: (url) => setState(() => checkoutUrl = url))),
       if (isProduct) FilledButton.icon(
         onPressed: valid ? () => setState(() => checkoutUrl = link) : null,
         icon: const Icon(Icons.volunteer_activism), label: const Text('تبرع الآن')),
@@ -409,8 +416,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
-      icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التفاصيل')),
-    Expanded(child: _CheckoutContent(url: checkoutUrl!)),
+      icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
+    Expanded(child: _CheckoutContent(key: ValueKey(checkoutUrl), url: checkoutUrl!)),
   ]);
 
   String _postImage(dynamic post) {
