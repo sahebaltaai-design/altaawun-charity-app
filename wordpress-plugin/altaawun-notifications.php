@@ -2,7 +2,7 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار ويدوية من لوحة التحكم.
- * Version: 1.0.0
+ * Version: 1.1.0
  */
 defined('ABSPATH') || exit;
 add_action('admin_menu', function () {
@@ -18,7 +18,7 @@ function altaawun_push_page() {
   echo '<div class="notice notice-info"><p>تمت معالجة إعدادات Firebase.</p></div>';
  }
  if (isset($_POST['altaawun_send']) && check_admin_referer('altaawun_push_send')) {
-  $result=altaawun_push_send(sanitize_text_field(wp_unslash($_POST['title'] ?? '')),sanitize_textarea_field(wp_unslash($_POST['body'] ?? '')));
+  $result=altaawun_push_send(sanitize_text_field(wp_unslash($_POST['title'] ?? '')),sanitize_textarea_field(wp_unslash($_POST['body'] ?? '')),'',sanitize_key(wp_unslash($_POST['notification_type'] ?? 'normal')));
   echo '<div class="notice notice-info"><p>'.esc_html(is_wp_error($result)?$result->get_error_message():'تم قبول الإشعار من Firebase').'</p></div>';
  }
  echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية</h1><p>الموضوع: altaawun_updates</p>';
@@ -28,9 +28,10 @@ function altaawun_push_page() {
  echo '<h2>إرسال إشعار يدوي</h2><form method="post">';
  wp_nonce_field('altaawun_push_send');
  echo '<p><input name="title" required maxlength="120" placeholder="عنوان الإشعار" class="regular-text"></p><p><textarea name="body" required maxlength="1000" placeholder="نص الإشعار" rows="4" style="width:90%"></textarea></p>';
+ echo '<p><label>نوع الإشعار <select name="notification_type"><option value="normal">عادي</option><option value="urgent">عاجل</option></select></label></p>';
  echo '<button class="button button-primary" name="altaawun_send">إرسال الإشعار</button></form><p>يُرسل إشعار تلقائي عند نشر مقال جديد لأول مرة.</p></div>';
 }
-function altaawun_push_send($title,$body,$url='') {
+function altaawun_push_send($title,$body,$url='',$type='normal') {
  $a=json_decode(get_option('altaawun_push_credentials',''),true);
  if (empty($a['private_key'])||empty($a['client_email'])||empty($a['project_id'])) return new WP_Error('config','أدخل ملف Service Account أولاً.');
  if (!$title||!$body) return new WP_Error('empty','العنوان والنص مطلوبان.');
@@ -42,8 +43,11 @@ function altaawun_push_send($title,$body,$url='') {
  if (is_wp_error($tokenResponse)) return $tokenResponse;
  $token=json_decode(wp_remote_retrieve_body($tokenResponse),true)['access_token']??'';
  if (!$token) return new WP_Error('oauth','تعذر الحصول على رمز Firebase.');
- $message=['topic'=>'altaawun_updates','notification'=>['title'=>mb_substr($title,0,120),'body'=>mb_substr($body,0,1000)],'android'=>['priority'=>'high']];
- if ($url) $message['data']=['url'=>$url];
+ $type=$type==='urgent'?'urgent':'normal';
+ $channel=$type==='urgent'?'altaawun_urgent_v1':'altaawun_normal_v1';
+ $message=['topic'=>'altaawun_updates','notification'=>['title'=>mb_substr($title,0,120),'body'=>mb_substr($body,0,1000)],'android'=>['priority'=>'high','notification'=>['channel_id'=>$channel,'default_vibrate_timings'=>true]]];
+ $message['data']=['type'=>$type];
+ if ($url) $message['data']['url']=$url;
  $response=wp_remote_post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($a['project_id']).'/messages:send',['timeout'=>20,'headers'=>['Authorization'=>'Bearer '.$token,'Content-Type'=>'application/json'],'body'=>wp_json_encode(['message'=>$message])]);
  if (is_wp_error($response)) return $response;
  if (wp_remote_retrieve_response_code($response)!==200) return new WP_Error('fcm','Firebase HTTP '.wp_remote_retrieve_response_code($response).' '.substr(wp_remote_retrieve_body($response),0,150));
@@ -52,7 +56,10 @@ function altaawun_push_send($title,$body,$url='') {
 add_action('transition_post_status',function($new,$old,$post){
  if ($post->post_type!=='post'||$new!=='publish'||$old==='publish'||get_post_meta($post->ID,'_altaawun_push_sent',true)) return;
  if (!add_post_meta($post->ID,'_altaawun_push_lock',time(),true)) return;
- $result=altaawun_push_send(get_the_title($post),wp_strip_all_tags(wp_trim_words($post->post_content,28,'…')),get_permalink($post));
+ $result=altaawun_push_send(get_the_title($post),wp_strip_all_tags(wp_trim_words($post->post_content,28,'…')),get_permalink($post),get_post_meta($post->ID,'_altaawun_notification_type',true)==='urgent'?'urgent':'normal');
  if (!is_wp_error($result)) update_post_meta($post->ID,'_altaawun_push_sent',1);
  delete_post_meta($post->ID,'_altaawun_push_lock');
 },10,3);
+
+add_action('add_meta_boxes_post',function(){add_meta_box('altaawun_push_type','نوع إشعار الجمعية',function($post){wp_nonce_field('altaawun_push_type','altaawun_push_type_nonce');$v=get_post_meta($post->ID,'_altaawun_notification_type',true);echo '<label><select name="altaawun_notification_type"><option value="normal">عادي</option><option value="urgent" '.selected($v,'urgent',false).'>عاجل</option></select></label>';},'post','side');});
+add_action('save_post_post',function($id){if (!isset($_POST['altaawun_push_type_nonce'])||!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['altaawun_push_type_nonce'])),'altaawun_push_type')||!current_user_can('edit_post',$id)||wp_is_post_revision($id))return;update_post_meta($id,'_altaawun_notification_type',sanitize_key(wp_unslash($_POST['altaawun_notification_type']??'normal'))==='urgent'?'urgent':'normal');});
