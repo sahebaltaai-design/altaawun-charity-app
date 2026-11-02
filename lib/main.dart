@@ -152,7 +152,7 @@ class _Emblem extends StatelessWidget {
       border: Border.all(color: green, width: 2),
       boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .12), blurRadius: 12)],
     ),
-    child: Icon(Icons.mosque_rounded, size: size * .67, color: red),
+    child: ClipRRect(borderRadius: BorderRadius.circular(size * .22), child: Image.network('https://raw.githubusercontent.com/sahebaltaai-design/altaawun-charity-app/main/welcome_background-2.png', fit: BoxFit.cover, alignment: const Alignment(0, -.82), errorBuilder: (_, __, ___) => Icon(Icons.volunteer_activism, size: size * .67, color: red))),
   );
 }
 
@@ -169,12 +169,16 @@ class _CharityShellState extends State<CharityShell> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
+      toolbarHeight: 86,
+      backgroundColor: Colors.white,
+      foregroundColor: deepGreen,
       leading: Builder(builder: (context) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(context).openDrawer())),
-      title: page == 0 ? const Column(children: [
-        Text('جمعية التعاون الخيرية', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-        Text('مدرسة الأيتام وكفالتهم', style: TextStyle(fontSize: 11)),
+      title: page == 0 ? const Column(mainAxisSize: MainAxisSize.min, children: [
+        _Emblem(size: 38),
+        Text('جمعية التعاون الخيرية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+        Text('مدرسة الأيتام وكفالتهم', style: TextStyle(fontSize: 10)),
       ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-      actions: page == 0 ? [const Padding(padding: EdgeInsets.all(6), child: _Emblem(size: 40))] : null,
+      actions: page == 0 ? [IconButton(onPressed: () {}, icon: const Badge(label: Text('3'), child: Icon(Icons.notifications, color: green)))] : null,
     ),
     drawer: Drawer(child: SafeArea(child: Column(children: [
       Container(width: double.infinity, padding: const EdgeInsets.all(24), color: green,
@@ -237,11 +241,11 @@ class _CharityShellState extends State<CharityShell> {
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: .93,
         children: [
-          _shortcut(Icons.school, 'المدرسة\\nوالتعليم', 2),
+          _shortcut(Icons.school, 'المدرسة\nوالتعليم', 2),
           _shortcut(Icons.groups, 'كفالة الأيتام', 1),
-          _shortcut(Icons.volunteer_activism, 'التبرعات\\nوالمساهمات', 3, color: red),
-          _shortcut(Icons.photo_library, 'الصور\\nوالفيديوهات', 5),
-          _shortcut(Icons.article, 'الأخبار\\nوالأنشطة', 4, color: red),
+          _shortcut(Icons.volunteer_activism, 'التبرعات\nوالمساهمات', 3, color: red),
+          _shortcut(Icons.photo_library, 'الصور\nوالفيديوهات', 5),
+          _shortcut(Icons.article, 'الأخبار\nوالأنشطة', 4, color: red),
           _shortcut(Icons.menu_book, 'عن الجمعية', 6),
         ],
       ),
@@ -253,7 +257,7 @@ class _CharityShellState extends State<CharityShell> {
       Card(child: ListTile(
         leading: const Icon(Icons.article, color: green, size: 35),
         title: const Text('أخبار وأنشطة الجمعية', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text('ستظهر الأخبار الرسمية بعد ربط الموقع'),
+        subtitle: const Text('تابع أحدث أخبار وأنشطة الجمعية'),
         onTap: () => go(4),
       )),
     ])),
