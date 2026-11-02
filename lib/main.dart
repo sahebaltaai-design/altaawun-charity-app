@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 
@@ -180,12 +182,94 @@ class _CharityShellState extends State<CharityShell> {
   Set<int> hiddenCategories = {};
   Map<int, String> customCategories = {};
   int? customPage;
+  List<Map<String, dynamic>> wpCategories = [];
+  bool wpLoading = true;
+  String? wpError;
+  int? wpSelectedCategory;
+  String? wpSelectedTitle;
+  static const String _site = 'https://aytamaliraq.com';
+
+  Future<void> _loadWordPressCategories() async {
+    if (mounted) setState(() { wpLoading = true; wpError = null; });
+    try {
+      final response = await http.get(
+        Uri.parse('$_site/wp-json/altaawun/v1/categories'),
+      ).timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map || decoded['categories'] is! List) {
+        throw const FormatException('Invalid categories response');
+      }
+      final categories = <Map<String, dynamic>>[];
+      for (final item in decoded['categories'] as List) {
+        if (item is Map && item['id'] is num && item['name'] is String) {
+          categories.add({'id': (item['id'] as num).toInt(), 'name': item['name'] as String});
+        }
+      }
+      if (!mounted) return;
+      setState(() { wpCategories = categories; wpLoading = false; });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() { wpError = 'تعذر تحميل تصنيفات الجمعية. تحقق من الاتصال بالإنترنت وحاول مرة أخرى.'; wpLoading = false; });
+    }
+  }
+
+  void _openWordPressCategory(int id, String title) {
+    setState(() { wpSelectedCategory = id; wpSelectedTitle = title; page = 0; customPage = null; });
+  }
+
+  String _plainText(String html) => html
+      .replaceAll(RegExp(r'<[^>]*>'), '')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#039;', "'")
+      .replaceAll('&nbsp;', ' ');
+
+  Widget _wordPressPosts() {
+    final id = wpSelectedCategory!;
+    return FutureBuilder<http.Response>(
+      key: ValueKey(id),
+      future: http.get(Uri.parse('$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_fields=id,title,excerpt,date')).timeout(const Duration(seconds: 15)),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || snapshot.data?.statusCode != 200) {
+          return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('تعذر تحميل مقالات هذا التصنيف'),
+            TextButton(onPressed: () => setState(() {}), child: const Text('إعادة المحاولة')),
+            TextButton(onPressed: () => go(0), child: const Text('العودة للرئيسية')),
+          ]));
+        }
+        try {
+          final posts = jsonDecode(utf8.decode(snapshot.data!.bodyBytes)) as List;
+          return ListView(children: [
+            ListTile(title: Text(wpSelectedTitle ?? 'التصنيف',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 21)),
+              trailing: IconButton(icon: const Icon(Icons.home), onPressed: () => go(0))),
+            if (posts.isEmpty) const Padding(
+              padding: EdgeInsets.all(28), child: Center(child: Text('لا توجد مقالات في هذا التصنيف حاليًا'))),
+            for (final post in posts)
+              Card(child: ListTile(
+                title: Text(_plainText((post['title']?['rendered'] ?? '').toString()),
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(_plainText((post['excerpt']?['rendered'] ?? '').toString()),
+                  maxLines: 3, overflow: TextOverflow.ellipsis),
+              )),
+          ]);
+        } catch (_) {
+          return const Center(child: Text('تعذر قراءة بيانات المقالات'));
+        }
+      },
+    );
+  }
   String _labelFor(int id) => customCategories[id] ?? _categoryLabels[id] ?? 'تصنيف';
 
   @override
   void initState() {
     super.initState();
     _loadCategorySettings();
+    _loadWordPressCategories();
   }
 
   Future<void> _loadCategorySettings() async {
@@ -369,7 +453,7 @@ class _CharityShellState extends State<CharityShell> {
     );
   }
 
-  void go(int value) => setState(() { page = value; customPage = null; });
+  void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; });
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -389,10 +473,10 @@ class _CharityShellState extends State<CharityShell> {
         child: const Column(children: [_Emblem(size: 76), SizedBox(height: 12),
           Text('جمعية التعاون الخيرية', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold))])),
       ListTile(
-        leading: const Icon(Icons.tune, color: green),
-        title: const Text('إدارة التصنيفات'),
-        subtitle: const Text('ترتيب وإظهار وإخفاء أقسام الصفحة الرئيسية'),
-        onTap: () { Navigator.pop(context); _manageCategories(); },
+        leading: const Icon(Icons.refresh, color: green),
+        title: const Text('تحديث تصنيفات ووردبريس'),
+        subtitle: const Text('يتم اختيار التصنيفات من لوحة إدارة الموقع'),
+        onTap: () { Navigator.pop(context); go(0); _loadWordPressCategories(); },
       ),
       Expanded(child: ListView(children: [
         for (var i = 0; i < names.length; i++)
@@ -402,7 +486,7 @@ class _CharityShellState extends State<CharityShell> {
           ),
       ])),
     ]))),
-    body: customPage != null ? _customSection(customPage!) : page == 0 ? _home() : _section(),
+    body: wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : _section(),
     bottomNavigationBar: NavigationBar(
       height: 72,
       selectedIndex: [0, 1, 4, 3, 6].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 6].indexOf(page),
@@ -470,12 +554,43 @@ class _CharityShellState extends State<CharityShell> {
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: .93,
         children: [
-          for (final id in categoryOrder)
-            if (!hiddenCategories.contains(id))
-              _shortcut(_categoryIcons[id] ?? Icons.folder_outlined, _labelFor(id), id,
-                  color: (id == 3 || id == 4) ? red : green),
+          for (final category in wpCategories)
+            Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _openWordPressCategory(
+                    category['id'] as int, category['name'] as String),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.folder_open, size: 36, color: green),
+                  const SizedBox(height: 9),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(category['name'] as String,
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  ),
+                ]),
+              ),
+            ),
         ],
       ),
+      if (wpLoading)
+        const Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator())
+      else if (wpError != null)
+        Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+          Text(wpError!, textAlign: TextAlign.center),
+          TextButton(onPressed: _loadWordPressCategories, child: const Text('إعادة المحاولة')),
+        ]))
+      else if (wpCategories.isEmpty)
+        const Padding(padding: EdgeInsets.all(16),
+          child: Text('لم يتم اختيار تصنيفات للتطبيق من لوحة ووردبريس بعد.',
+            textAlign: TextAlign.center)),
+      TextButton.icon(onPressed: _loadWordPressCategories,
+        icon: const Icon(Icons.refresh), label: const Text('تحديث التصنيفات')),
       const SizedBox(height: 12),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         const Text('أحدث الأخبار', style: TextStyle(color: deepGreen, fontSize: 22, fontWeight: FontWeight.w900)),
