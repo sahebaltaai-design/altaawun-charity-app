@@ -325,6 +325,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     try {
       final messaging = FirebaseMessaging.instance;
       await messaging.requestPermission();
+      await messaging.subscribeToTopic('altaawun_updates');
       final token = await messaging.getToken();
       if (mounted) setState(() => _fcmToken = token);
       FirebaseMessaging.instance.onTokenRefresh.listen((value) {
