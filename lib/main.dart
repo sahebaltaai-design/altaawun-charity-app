@@ -321,6 +321,53 @@ class CharityShell extends StatefulWidget {
 
 class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver {
   String? _fcmToken;
+  String _notificationTone = 'urgent';
+  bool _notificationVibration = true;
+
+  Future<void> _loadNotificationPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _notificationTone = prefs.getString('notification_tone') ?? 'urgent';
+      _notificationVibration = prefs.getBool('notification_vibration') ?? true;
+    });
+  }
+
+  Future<void> _showNotificationPreferences() async {
+    String selected = _notificationTone;
+    bool vibration = _notificationVibration;
+    await showDialog<void>(context: context, builder: (dialogContext) =>
+      StatefulBuilder(builder: (context, update) => AlertDialog(
+        title: const Text('إعدادات الإشعارات'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final option in const [
+            ('urgent', 'تنبيه الأخبار العاجلة'),
+            ('news', 'نغمة الأخبار'),
+            ('soft', 'نغمة هادئة'),
+            ('default', 'نغمة الهاتف الافتراضية'),
+          ]) RadioListTile<String>(
+            title: Text(option.$2), value: option.$1, groupValue: selected,
+            onChanged: (value) => update(() => selected = value ?? 'urgent'),
+          ),
+          SwitchListTile(title: const Text('الاهتزاز'), value: vibration,
+            onChanged: (value) => update(() => vibration = value)),
+          const Text('اختيار النغمة هنا يُحفظ، لكن تفعيل صوتها في إشعارات Android يحتاج إصدارًا يدعم قنوات الصوت.',
+            style: TextStyle(fontSize: 12)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+          FilledButton(onPressed: () async {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('notification_tone', selected);
+            await prefs.setBool('notification_vibration', vibration);
+            if (!mounted) return;
+            setState(() { _notificationTone = selected; _notificationVibration = vibration; });
+            if (dialogContext.mounted) Navigator.pop(dialogContext);
+          }, child: const Text('حفظ')),
+        ],
+      )));
+  }
+
   bool _validNewsUrl(String value) {
     final uri = Uri.tryParse(value);
     return uri != null && uri.scheme == 'https' &&
@@ -621,6 +668,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   void initState() {
     super.initState();
     _loadCategorySettings();
+    _loadNotificationPreferences();
     _setupPush();
     WidgetsBinding.instance.addObserver(this);
     _loadCachedWordPressCategories();
@@ -881,6 +929,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         subtitle: const Text('تُحدّث تلقائيًا من لوحة إدارة الموقع'),
         onTap: () { Navigator.pop(context); go(0); },
       ),
+      ListTile(leading: const Icon(Icons.notifications_active, color: green),
+        title: const Text('إعدادات الإشعارات'),
+        onTap: () { Navigator.pop(context); _showNotificationPreferences(); }),
       Expanded(child: ListView(children: [
         for (var i = 0; i < names.length; i++)
           ListTile(
