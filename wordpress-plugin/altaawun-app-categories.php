@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Al-Taawun App Categories
  * Description: اختيار وترتيب تصنيفات ووردبريس التي تظهر في تطبيق جمعية التعاون الخيرية.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Requires PHP: 7.4
  */
 if (!defined('ABSPATH')) exit;
@@ -133,6 +133,7 @@ add_action('rest_api_init', function () {
                     'id' => $post->ID,
                     'name' => get_the_title($post),
                     'description' => wp_strip_all_tags($product->get_short_description()),
+                    'full_description' => apply_filters('the_content', $post->post_content),
                     'price' => $product->get_price_html() ? wp_strip_all_tags($product->get_price_html()) : '',
                     'image' => get_the_post_thumbnail_url($post->ID, 'medium') ?: '',
                     'link' => get_permalink($post),
