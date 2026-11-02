@@ -32,8 +32,8 @@ class SplashScreen extends StatelessWidget {
     body: LayoutBuilder(builder: (context, constraints) => Stack(
       fit: StackFit.expand,
       children: [
-        Image.network(
-          'https://raw.githubusercontent.com/sahebaltaai-design/altaawun-charity-app/main/welcome_background-2.png',
+        Image.asset(
+          'assets/welcome_background-2.png',
           fit: BoxFit.fill,
           errorBuilder: (_, __, ___) => const ColoredBox(color: deepGreen),
         ),
@@ -152,7 +152,7 @@ class _Emblem extends StatelessWidget {
       border: Border.all(color: green, width: 2),
       boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .12), blurRadius: 12)],
     ),
-    child: ClipRRect(borderRadius: BorderRadius.circular(size * .22), child: Image.network('https://raw.githubusercontent.com/sahebaltaai-design/altaawun-charity-app/main/welcome_background-2.png', fit: BoxFit.cover, alignment: const Alignment(0, -.82), errorBuilder: (_, __, ___) => Icon(Icons.volunteer_activism, size: size * .67, color: red))),
+    child: ClipRRect(borderRadius: BorderRadius.circular(size * .22), child: Image.asset('assets/welcome_background-2.png', fit: BoxFit.cover, alignment: const Alignment(0, -.82), errorBuilder: (_, __, ___) => Icon(Icons.volunteer_activism, size: size * .67, color: red))),
   );
 }
 
@@ -214,8 +214,8 @@ class _CharityShellState extends State<CharityShell> {
 
   Widget _home() => ListView(padding: EdgeInsets.zero, children: [
     SizedBox(height: 260, child: Stack(fit: StackFit.expand, children: [
-      Image.network(
-        'https://raw.githubusercontent.com/sahebaltaai-design/altaawun-charity-app/main/home_hero.jpg',
+      Image.asset(
+        'assets/home_hero.jpg',
         fit: BoxFit.cover,
         errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(
           gradient: LinearGradient(colors: [Color(0xFF194B2F), Color(0xFF00642D)]))),
