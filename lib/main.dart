@@ -227,35 +227,16 @@ class _CharityShellState extends State<CharityShell> {
         customCategories.entries.map((e) => '${e.key}|${e.value}').toList());
   }
 
-  Future<void> _addCategory(StateSetter refreshSheet) async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('إضافة تصنيف جديد'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 50,
-          decoration: const InputDecoration(hintText: 'اسم التصنيف'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text.trim()),
-              child: const Text('إضافة')),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (!mounted || name == null || name.isEmpty) return;
+  void _addCategoryInline(String value, StateSetter refreshSheet) {
+    final name = value.trim();
+    if (name.isEmpty) return;
     final id = customCategories.keys.fold<int>(99, (max, x) => x > max ? x : max) + 1;
     refreshSheet(() {
       customCategories[id] = name;
       categoryOrder.add(id);
     });
-    setState(() {});
-    await _saveCategorySettings();
+    if (mounted) setState(() {});
+    _saveCategorySettings();
   }
 
   void _openCustomCategory(int id) {
@@ -277,10 +258,11 @@ class _CharityShellState extends State<CharityShell> {
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               ),
               const Text('اسحب علامة الترتيب، أو أخفِ التصنيف بالمفتاح'),
-              TextButton.icon(
-                onPressed: () => _addCategory(refreshSheet),
-                icon: const Icon(Icons.add_circle_outline),
-                label: const Text('إضافة تصنيف جديد'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: _CategoryAddField(
+                  onAdd: (name) => _addCategoryInline(name, refreshSheet),
+                ),
               ),
               Expanded(child: ReorderableListView.builder(
                 buildDefaultDragHandles: false,
@@ -543,4 +525,53 @@ class _CharityShellState extends State<CharityShell> {
   Widget _disabledAction(String text) => FilledButton(
     onPressed: null, child: Padding(padding: const EdgeInsets.all(10), child: Text(text)),
   );
+}
+
+class _CategoryAddField extends StatefulWidget {
+  final ValueChanged<String> onAdd;
+  const _CategoryAddField({required this.onAdd});
+
+  @override
+  State<_CategoryAddField> createState() => _CategoryAddFieldState();
+}
+
+class _CategoryAddFieldState extends State<_CategoryAddField> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return;
+    widget.onAdd(name);
+    _controller.clear();
+    FocusScope.of(context).unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    Expanded(child: TextField(
+      controller: _controller,
+      maxLength: 50,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _submit(),
+      decoration: const InputDecoration(
+        labelText: 'اسم التصنيف الجديد',
+        hintText: 'مثال: مشاريع الجمعية',
+        counterText: '',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+    )),
+    const SizedBox(width: 8),
+    FilledButton.icon(
+      onPressed: _submit,
+      icon: const Icon(Icons.add),
+      label: const Text('إضافة'),
+    ),
+  ]);
 }
