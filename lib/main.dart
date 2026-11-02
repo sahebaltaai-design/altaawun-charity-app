@@ -38,19 +38,33 @@ class SplashScreen extends StatelessWidget {
           errorBuilder: (_, __, ___) => const ColoredBox(color: deepGreen),
         ),
         Positioned(
-          bottom: constraints.maxHeight * .085,
-          left: constraints.maxWidth * .12,
-          right: constraints.maxWidth * .12,
-          height: constraints.maxHeight * .105,
+          bottom: constraints.maxHeight * .095,
+          left: constraints.maxWidth * .11,
+          right: constraints.maxWidth * .11,
           child: Semantics(
             label: 'الدخول إلى التطبيق',
             button: true,
-            child: Material(color: Colors.transparent, child: InkWell(
-              borderRadius: BorderRadius.circular(30),
-              onTap: () => Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const CharityShell())),
-              child: const SizedBox.expand(),
-            )),
+            child: SizedBox(
+              height: 64,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const CharityShell())),
+                icon: const Icon(Icons.login, size: 27),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text('الدخول إلى التطبيق',
+                    style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF00652A),
+                  foregroundColor: Colors.white,
+                  elevation: 6,
+                  side: const BorderSide(color: Color(0xFFFFD66A), width: 2.5),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(36)),
+                ),
+              ),
+            ),
           ),
         ),
       ],
