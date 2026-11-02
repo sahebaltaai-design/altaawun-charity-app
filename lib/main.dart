@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,15 @@ import 'package:flutter/material.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  final notifications = FlutterLocalNotificationsPlugin();
+  await notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(
+    const AndroidNotificationChannel('altaawun_urgent_v1', 'الأخبار العاجلة',
+      description: 'إشعارات الأخبار العاجلة مع الاهتزاز', importance: Importance.max,
+      playSound: true, enableVibration: true));
+  await notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(
+    const AndroidNotificationChannel('altaawun_normal_v1', 'الأخبار العادية',
+      description: 'إشعارات الأخبار والأنشطة', importance: Importance.high,
+      playSound: true, enableVibration: false));
   runApp(const AltaawunApp());
 }
 
