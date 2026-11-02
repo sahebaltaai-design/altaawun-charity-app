@@ -53,6 +53,48 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Generate Android launcher icons from charity emblem
+        run: |
+          python3 -m pip install --user Pillow
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import xml.etree.ElementTree as ET
+          src = Path('assets/cropped-3.webp')
+          if not src.is_file():
+              raise SystemExit('Missing uploaded charity icon: assets/cropped-3.webp')
+          im = Image.open(src).convert('RGBA')
+          box = im.getbbox()
+          if box:
+              im = im.crop(box)
+          root = Path('android/app/src/main/res')
+          for suffix, size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
+              out = Image.new('RGBA',(size,size),(0,0,0,255))
+              icon = im.copy()
+              icon.thumbnail((int(size*.86),int(size*.86)),Image.Resampling.LANCZOS)
+              out.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
+              dest=root/('mipmap-'+suffix)
+              dest.mkdir(parents=True,exist_ok=True)
+              out.convert('RGB').save(dest/'ic_launcher.png')
+          # Replace Flutter's adaptive launcher foreground and background too.
+          fg=root/'drawable-nodpi'
+          fg.mkdir(parents=True,exist_ok=True)
+          size=432
+          out=Image.new('RGBA',(size,size),(0,0,0,0))
+          icon=im.copy()
+          icon.thumbnail((290,290),Image.Resampling.LANCZOS)
+          out.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
+          out.save(fg/'altaawun_launcher_foreground.png')
+          adaptive=root/'mipmap-anydpi-v26'
+          adaptive.mkdir(parents=True,exist_ok=True)
+          xml='''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@android:color/black"/>
+              <foreground android:drawable="@drawable/altaawun_launcher_foreground"/>
+          </adaptive-icon>'''
+          (adaptive/'ic_launcher.xml').write_text(xml,encoding='utf-8')
+          PY
+
       - name: Build APK
         run: flutter build apk --debug --build-number=${{ github.run_number }}
 
