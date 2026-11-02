@@ -320,6 +320,26 @@ class CharityShell extends StatefulWidget {
 }
 
 class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver {
+  String? _fcmToken;
+  Future<void> _setupPush() async {
+    try {
+      final messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission();
+      final token = await messaging.getToken();
+      if (mounted) setState(() => _fcmToken = token);
+      FirebaseMessaging.instance.onTokenRefresh.listen((value) {
+        if (mounted) setState(() => _fcmToken = value);
+      });
+      FirebaseMessaging.onMessage.listen((message) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(message.notification?.title ?? 'إشعار جديد من الجمعية'),
+        ));
+      });
+    } catch (e) {
+      debugPrint('FCM initialization: $e');
+    }
+  }
   DateTime? _lastCategoryFetch;
   static const _refreshInterval = Duration(hours: 6);
   bool _fetchingCategories = false;
@@ -573,6 +593,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   void initState() {
     super.initState();
     _loadCategorySettings();
+    _setupPush();
     WidgetsBinding.instance.addObserver(this);
     _loadCachedWordPressCategories();
   }
@@ -807,7 +828,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: const Text('الإشعارات'),
-            content: const Text('لا توجد إشعارات محفوظة داخل التطبيق حاليًا. ستظهر الإشعارات هنا بعد ربط سجل الإشعارات بالموقع.'),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('رمز الجهاز للاختبار عبر Firebase. لا يوجد سجل إشعارات محفوظ حتى الآن.'),
+              const SizedBox(height: 12),
+              SelectableText(_fcmToken ?? 'لم يتوفر رمز FCM بعد. تأكد من اتصال الإنترنت والسماح بالإشعارات.',
+                style: const TextStyle(fontSize: 12)),
+            ]),
             actions: [TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('إغلاق'),
