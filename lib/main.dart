@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -248,7 +247,8 @@ class CharityShell extends StatefulWidget {
 }
 
 class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver {
-  Timer? _categoriesTimer;
+  DateTime? _lastCategoryFetch;
+  static const _refreshInterval = Duration(hours: 6);
   bool _fetchingCategories = false;
   int page = 0;
   final names = const ['الرئيسية', 'كفالة الأيتام', 'المدرسة والتعليم', 'التبرعات والمساهمات', 'الأخبار والأنشطة', 'الصور والفيديوهات', 'عن الجمعية'];
@@ -276,6 +276,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   Future<void> _loadWordPressCategories({bool silent = false}) async {
     if (_fetchingCategories) return;
+    if (silent && _lastCategoryFetch != null &&
+        DateTime.now().difference(_lastCategoryFetch!) < _refreshInterval) return;
     _fetchingCategories = true;
     if (!silent && mounted) setState(() { wpLoading = true; wpError = null; });
     try {
@@ -293,6 +295,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           categories.add({'id': (item['id'] as num).toInt(), 'name': item['name'] as String, 'type': item['type'] == 'product_cat' ? 'product_cat' : 'category'});
         }
       }
+      _lastCategoryFetch = DateTime.now();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('wp_categories_cache', jsonEncode(categories));
       if (!mounted) return;
       setState(() { wpCategories = categories; wpLoading = false; wpError = null; });
     } catch (_) {
@@ -377,10 +382,24 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     super.initState();
     _loadCategorySettings();
     WidgetsBinding.instance.addObserver(this);
-    _loadWordPressCategories();
-    _categoriesTimer = Timer.periodic(const Duration(minutes: 2), (_) {
-      _loadWordPressCategories(silent: true);
-    });
+    _loadCachedWordPressCategories();
+  }
+
+  Future<void> _loadCachedWordPressCategories() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('wp_categories_cache');
+    if (cached != null) {
+      try {
+        final items = jsonDecode(cached) as List;
+        if (mounted) {
+          setState(() {
+            wpCategories = items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+            wpLoading = false;
+          });
+        }
+      } catch (_) {}
+    }
+    await _loadWordPressCategories(silent: cached != null);
   }
 
   @override
@@ -392,7 +411,6 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   @override
   void dispose() {
-    _categoriesTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
