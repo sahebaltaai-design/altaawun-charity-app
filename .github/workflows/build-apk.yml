@@ -64,14 +64,21 @@ jobs:
           if not src.is_file():
               raise SystemExit('Missing uploaded charity icon: assets/cropped-3.webp')
           im = Image.open(src).convert('RGBA')
-          box = im.getbbox()
+          # The uploaded image contains wide black margins around the emblem.
+          # Crop the visible non-black artwork before scaling it.
+          from PIL import ImageChops
+          rgb = im.convert('RGB')
+          mask = rgb.convert('L').point(lambda p: 255 if p > 28 else 0)
+          box = mask.getbbox()
           if box:
-              im = im.crop(box)
+              margin = max(2, int(max(box[2]-box[0],box[3]-box[1]) * .06))
+              im = im.crop((max(0,box[0]-margin),max(0,box[1]-margin),
+                            min(im.width,box[2]+margin),min(im.height,box[3]+margin)))
           root = Path('android/app/src/main/res')
           for suffix, size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
               out = Image.new('RGBA',(size,size),(0,0,0,255))
               icon = im.copy()
-              icon.thumbnail((int(size*.86),int(size*.86)),Image.Resampling.LANCZOS)
+              icon.thumbnail((int(size*.94),int(size*.86)),Image.Resampling.LANCZOS)
               out.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
               dest=root/('mipmap-'+suffix)
               dest.mkdir(parents=True,exist_ok=True)
@@ -82,7 +89,7 @@ jobs:
           size=432
           out=Image.new('RGBA',(size,size),(0,0,0,0))
           icon=im.copy()
-          icon.thumbnail((290,290),Image.Resampling.LANCZOS)
+          icon.thumbnail((350,350),Image.Resampling.LANCZOS)
           out.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
           out.save(fg/'altaawun_launcher_foreground.png')
           adaptive=root/'mipmap-anydpi-v26'
