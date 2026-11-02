@@ -120,13 +120,13 @@ class _HtmlContentState extends State<_HtmlContent> {
   void initState() {
     super.initState();
     controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.disabled)
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (_) => NavigationDecision.prevent,
       ));
     controller.loadHtmlString(
       '<html lang="ar" dir="rtl"><meta name="viewport" content="width=device-width,initial-scale=1">'
-      '<style>body{font-family:sans-serif;font-size:17px;line-height:1.8;padding:8px;}img{max-width:100%;height:auto;}</style>'
+      '<style>body{font-family:sans-serif;font-size:17px;line-height:1.8;padding:8px;}img,video,iframe{max-width:100%;}img{height:auto;}video{height:auto;}iframe{width:100%;min-height:230px;border:0;}</style>'
       '${widget.content}</html>');
   }
   @override
@@ -380,7 +380,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         : _plainText((item['title']?['rendered'] ?? '').toString());
     final content = isProduct ? (item['full_description'] ?? item['description'] ?? '').toString()
         : (item['content']?['rendered'] ?? '').toString();
-    final image = (item['image'] ?? '').toString();
+    final media = item['_embedded'] is Map
+        ? (item['_embedded']['wp:featuredmedia'] as List?) : null;
+    final featured = media != null && media.isNotEmpty && media.first is Map
+        ? (media.first['source_url'] ?? '').toString() : '';
+    final image = isProduct ? (item['image'] ?? '').toString() : featured;
     final price = (item['price'] ?? '').toString();
     final link = (item['link'] ?? '').toString();
     final uri = Uri.tryParse(link);
@@ -409,6 +413,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     Expanded(child: _CheckoutContent(url: checkoutUrl!)),
   ]);
 
+  String _postImage(dynamic post) {
+    if (post is! Map || post['_embedded'] is! Map) return '';
+    final media = post['_embedded']['wp:featuredmedia'];
+    if (media is! List || media.isEmpty || media.first is! Map) return '';
+    return (media.first['source_url'] ?? '').toString();
+  }
+
   Widget _wordPressPosts() {
     final id = wpSelectedCategory!;
     final isProducts = wpSelectedType == 'product_cat';
@@ -416,7 +427,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       key: ValueKey(id),
       future: http.get(Uri.parse(isProducts
         ? '$_site/wp-json/altaawun/v1/products?category=$id'
-        : '$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_fields=id,title,excerpt,content,date')).timeout(const Duration(seconds: 15)),
+        : '$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_embed=wp:featuredmedia&_fields=id,title,excerpt,content,date,_embedded')).timeout(const Duration(seconds: 15)),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
@@ -440,8 +451,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             for (final post in posts)
               Card(child: ListTile(
                 onTap: () => setState(() => selectedItem = Map<String, dynamic>.from(post as Map)),
-                leading: isProducts && (post['image'] ?? '').toString().isNotEmpty
-                  ? Image.network(post['image'].toString(), width: 56, height: 56,
+                leading: (isProducts ? (post['image'] ?? '').toString() : _postImage(post)).isNotEmpty
+                  ? Image.network(isProducts ? post['image'].toString() : _postImage(post), width: 56, height: 56,
                       fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.shopping_bag))
                   : Icon(isProducts ? Icons.shopping_bag : Icons.article, color: green),
                 title: Text(isProducts
