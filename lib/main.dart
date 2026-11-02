@@ -38,17 +38,28 @@ class SplashScreen extends StatelessWidget {
           errorBuilder: (_, __, ___) => const ColoredBox(color: deepGreen),
         ),
         Positioned(
-          bottom: constraints.maxHeight * .025,
-          left: 16,
-          right: 16,
-          child: const Text(
-            'معًا .. نصنع لهم مستقبلًا أفضل',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              shadows: [Shadow(color: Colors.black54, blurRadius: 5)],
+          bottom: constraints.maxHeight * .012,
+          left: 12,
+          right: 12,
+          child: SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              decoration: BoxDecoration(
+                color: const Color(0xFF003B1D),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFFFD66A), width: 1),
+              ),
+              child: const Text(
+                'معًا .. نصنع لهم مستقبلًا أفضل',
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ),
         ),
