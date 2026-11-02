@@ -102,6 +102,21 @@ jobs:
           (adaptive/'ic_launcher.xml').write_text(xml,encoding='utf-8')
           PY
 
+      - name: Remove screenshot status bar from welcome background
+        run: |
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          p = Path('assets/welcome_background-2.png')
+          image = Image.open(p).convert('RGB')
+          # Source artwork is a phone screenshot; remove the top status strip.
+          # Preserve original dimensions to keep the splash layout consistent.
+          top = round(image.height * 0.065)
+          clean = image.crop((0, top, image.width, image.height))
+          clean = clean.resize(image.size, Image.Resampling.LANCZOS)
+          clean.save(p, 'PNG', optimize=True)
+          PY
+
       - name: Build APK
         run: flutter build apk --debug --build-number=${{ github.run_number }}
 
