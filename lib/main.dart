@@ -460,6 +460,16 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       caseSensitive: false).hasMatch(content);
   }
 
+  String _selectedCategoryImage() {
+    for (final category in wpCategories) {
+      if (category['id'] == wpSelectedCategory &&
+          category['type'] == wpSelectedType) {
+        return (category['image'] ?? '').toString();
+      }
+    }
+    return '';
+  }
+
   Widget _wordPressPosts() {
     final id = wpSelectedCategory!;
     final isProducts = wpSelectedType == 'product_cat';
@@ -483,8 +493,15 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           final decoded = jsonDecode(utf8.decode(snapshot.data!.bodyBytes));
           final posts = isProducts ? (decoded['products'] as List) : (decoded as List);
           return ListView(children: [
-            ListTile(title: Text(wpSelectedTitle ?? 'التصنيف',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 21)),
+            ListTile(
+              leading: _selectedCategoryImage().isNotEmpty
+                  ? ClipRRect(borderRadius: BorderRadius.circular(8),
+                      child: Image.network(_selectedCategoryImage(), width: 62,
+                        height: 62, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.folder)))
+                  : const Icon(Icons.folder_outlined, color: green),
+              title: Text(wpSelectedTitle ?? 'التصنيف',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 21)),
               trailing: IconButton(icon: const Icon(Icons.home), onPressed: () => go(0))),
             if (posts.isEmpty) const Padding(
               padding: EdgeInsets.all(28), child: Center(child: Text('لا توجد مقالات في هذا التصنيف حاليًا'))),
