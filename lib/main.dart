@@ -428,6 +428,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   String _postImage(dynamic post) {
     if (post is! Map) return '';
+    final direct = (post['featured_image_url'] ?? '').toString();
+    if (direct.isNotEmpty) return direct;
     final embedded = post['_embedded'];
     if (embedded is Map) {
       final media = embedded['wp:featuredmedia'];
@@ -477,7 +479,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       key: ValueKey(id),
       future: http.get(Uri.parse(isProducts
         ? '$_site/wp-json/altaawun/v1/products?category=$id'
-        : '$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_embed=wp:featuredmedia&_fields=id,title,excerpt,content,date,_embedded')).timeout(const Duration(seconds: 15)),
+        : '$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_embed=1')).timeout(const Duration(seconds: 15)),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Center(child: CircularProgressIndicator());
