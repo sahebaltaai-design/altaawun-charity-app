@@ -132,9 +132,19 @@ class _HtmlContentState extends State<_HtmlContent> {
         },
       ));
     controller.loadHtmlString(
-      '<html lang="ar" dir="rtl"><meta name="viewport" content="width=device-width,initial-scale=1">'
-      '<style>body{font-family:sans-serif;font-size:17px;line-height:1.8;padding:8px;}img,video,iframe{max-width:100%;}img{height:auto;}video{height:auto;}iframe{width:100%;min-height:230px;border:0;}</style>'
-      '${widget.content}</html>');
+      '<!doctype html><html lang="ar" dir="rtl"><head>'
+      '<meta name="viewport" content="width=device-width,initial-scale=1">'
+      '<style>body{font-family:sans-serif;font-size:17px;line-height:1.8;'
+      'padding:8px;margin:0;overflow-wrap:anywhere;}'
+      'img,video,audio,iframe,embed{max-width:100%;}'
+      'img{height:auto;}video{height:auto;}audio{width:100%;}'
+      'iframe{width:100%;min-height:260px;border:0;}</style></head><body>'
+      '${widget.content}'
+      '<script>document.querySelectorAll("video,audio").forEach(function(m){'
+      'm.setAttribute("controls","controls");m.setAttribute("preload","metadata");'
+      '});</script></body></html>',
+      baseUrl: 'https://www.aytamaliraq.com/',
+    );
   }
   @override
   Widget build(BuildContext context) => WebViewWidget(controller: controller);
@@ -407,7 +417,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
       if (price.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(_plainText(price), style: const TextStyle(fontSize: 19, color: green))),
-      if (content.isNotEmpty) SizedBox(height: 420, child: _HtmlContent(content: content, onLink: (url) => setState(() => checkoutUrl = url))),
+      if (content.isNotEmpty) SizedBox(height: MediaQuery.sizeOf(context).height * 0.72, child: _HtmlContent(content: content, onLink: (url) => setState(() => checkoutUrl = url))),
       if (isProduct) FilledButton.icon(
         onPressed: valid ? () => setState(() => checkoutUrl = link) : null,
         icon: const Icon(Icons.volunteer_activism), label: const Text('تبرع الآن')),
