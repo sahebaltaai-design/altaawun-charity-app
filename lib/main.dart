@@ -149,7 +149,7 @@ class _CharityShellState extends State<CharityShell> {
           ),
       ])),
     ]))),
-    body: page == 0 ? _home() : page == 4 ? _newsPage() : _section(),
+    body: page == 0 ? _home() : _section(),
     bottomNavigationBar: NavigationBar(
       height: 72,
       selectedIndex: [0, 1, 4, 3, 6].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 6].indexOf(page),
