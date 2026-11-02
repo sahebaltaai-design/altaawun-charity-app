@@ -795,7 +795,21 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         Text('جمعية التعاون الخيرية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
         Text('مدرسة الأيتام وكفالتهم', style: TextStyle(fontSize: 10)),
       ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-      actions: page == 0 ? [IconButton(onPressed: () {}, icon: const Badge(label: Text('3'), child: Icon(Icons.notifications, color: green)))] : null,
+      actions: page == 0 ? [IconButton(
+        tooltip: 'الإشعارات',
+        onPressed: () => showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('الإشعارات'),
+            content: const Text('لا توجد إشعارات محفوظة داخل التطبيق حاليًا. ستظهر الإشعارات هنا بعد ربط سجل الإشعارات بالموقع.'),
+            actions: [TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('إغلاق'),
+            )],
+          ),
+        ),
+        icon: const Icon(Icons.notifications_outlined, color: green),
+      )] : null,
     ),
     drawer: Drawer(child: SafeArea(child: Column(children: [
       Container(width: double.infinity, padding: const EdgeInsets.all(24), color: green,
