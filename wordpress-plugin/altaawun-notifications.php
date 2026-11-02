@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
- * Description: إشعارات Firebase تلقائية عند نشر الأخبار ويدوية من لوحة التحكم.
- * Version: 1.2.2
+ * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
+ * Version: 1.2.3
  */
 defined('ABSPATH') || exit;
 add_action('admin_menu', function () {
@@ -30,7 +30,7 @@ function altaawun_push_page() {
  wp_nonce_field('altaawun_push_send');
  echo '<p><input name="title" required maxlength="120" placeholder="عنوان الإشعار" class="regular-text"></p><p><textarea name="body" required maxlength="1000" placeholder="نص الإشعار" rows="4" style="width:90%"></textarea></p>';
  echo '<p><label>نوع الإشعار <select name="notification_type"><option value="normal">عادي</option><option value="urgent">عاجل</option></select></label></p>';
- echo '<button class="button button-primary" name="altaawun_send">إرسال الإشعار</button></form><p>يُرسل إشعار تلقائي عند نشر مقال جديد لأول مرة.</p></div>';
+ echo '<button class="button button-primary" name="altaawun_send">إرسال الإشعار</button></form><p>يُرسل إشعار تلقائي عند نشر مقال أو منتج جديد لأول مرة.</p></div>';
 }
 function altaawun_push_send($title,$body,$url='',$type='normal') {
  $a=json_decode(get_option('altaawun_push_credentials',''),true);
@@ -60,6 +60,17 @@ add_action('transition_post_status',function($new,$old,$post){
  if (!wp_next_scheduled('altaawun_send_post_notification',[$post->ID]))
   wp_schedule_single_event(time()+30,'altaawun_send_post_notification',[$post->ID]);
 },10,3);
+// WooCommerce can create products directly with publish status; cover that path as well.
+function altaawun_queue_new_product_notification($id) {
+ $post=get_post($id);
+ if (!$post||$post->post_type!=='product'||$post->post_status!=='publish'||get_post_meta($id,'_altaawun_push_sent',true)) return;
+ $created=get_post_time('U',true,$post);
+ if (!$created||time()-$created>600) return; // Never alert for ordinary edits to older products.
+ if (!wp_next_scheduled('altaawun_send_post_notification',[$id]))
+  wp_schedule_single_event(time()+30,'altaawun_send_post_notification',[$id]);
+}
+add_action('save_post_product','altaawun_queue_new_product_notification',20,1);
+add_action('woocommerce_new_product','altaawun_queue_new_product_notification',20,1);
 add_action('altaawun_send_post_notification',function($id){
  $post=get_post($id);
  if (!$post||!in_array($post->post_type,['post','product'],true)||$post->post_status!=='publish'||get_post_meta($id,'_altaawun_push_sent',true)) return;
