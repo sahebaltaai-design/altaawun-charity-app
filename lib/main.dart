@@ -32,59 +32,27 @@ class SplashScreen extends StatelessWidget {
     body: LayoutBuilder(builder: (context, constraints) => Stack(
       fit: StackFit.expand,
       children: [
-        const DecoratedBox(decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            stops: [0, .43, .74, 1],
-            colors: [Color(0xFF79D6F1), Color(0xFFF9FAF1), Color(0xFF80BD7C), deepGreen],
-          ),
-        )),
-        Positioned(top: constraints.maxHeight * .39, left: 0, right: 0,
-          height: constraints.maxHeight * .40,
-          child: const _SchoolIllustration()),
-        Positioned(top: constraints.maxHeight * .67, left: -30, right: -30,
-          child: Transform.rotate(angle: -.10, child: Container(
-            height: 26, decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [green, Colors.white, red, Colors.white, green]),
-            ),
-          )),
+        Image.network(
+          'https://raw.githubusercontent.com/sahebaltaai-design/altaawun-charity-app/main/welcome_background-2.png',
+          fit: BoxFit.fill,
+          errorBuilder: (_, __, ___) => const ColoredBox(color: deepGreen),
         ),
-        SafeArea(child: Column(children: [
-          SizedBox(height: constraints.maxHeight * .07),
-          const _Emblem(size: 116),
-          const SizedBox(height: 15),
-          const FittedBox(fit: BoxFit.scaleDown, child: Text(
-            'جمعية التعاون الخيرية',
-            style: TextStyle(color: deepGreen, fontSize: 30, fontWeight: FontWeight.w900),
-          )),
-          const SizedBox(height: 8),
-          const Text('مدرسة الأيتام وكفالتهم',
-            style: TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          const Text('www.aytamaliraq.com',
-            style: TextStyle(color: green, fontSize: 16, fontWeight: FontWeight.w600)),
-          const Spacer(),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 32), child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () => Navigator.of(context).pushReplacement(
+        Positioned(
+          bottom: constraints.maxHeight * .085,
+          left: constraints.maxWidth * .12,
+          right: constraints.maxWidth * .12,
+          height: constraints.maxHeight * .105,
+          child: Semantics(
+            label: 'الدخول إلى التطبيق',
+            button: true,
+            child: Material(color: Colors.transparent, child: InkWell(
+              borderRadius: BorderRadius.circular(30),
+              onTap: () => Navigator.of(context).pushReplacement(
                 MaterialPageRoute(builder: (_) => const CharityShell())),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.white, foregroundColor: deepGreen,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              ),
-              icon: const Icon(Icons.login),
-              label: const Text('الدخول إلى التطبيق',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-            ),
-          )),
-          const SizedBox(height: 17),
-          const Text('معًا .. نصنع لهم مستقبلًا أفضل',
-            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 26),
-        ])),
+              child: const SizedBox.expand(),
+            )),
+          ),
+        ),
       ],
     )),
   );
