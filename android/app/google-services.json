@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "340758307906",
+    "project_id": "al-taawun-charity",
+    "storage_bucket": "al-taawun-charity.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:340758307906:android:094913c5f14dd8a28339db",
+        "android_client_info": {
+          "package_name": "com.altaawuncharity.altaawun_charity_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzsi5dHTasJ_20Wh3XvoZbSsShlheSXTo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
