@@ -38,58 +38,57 @@ class SplashScreen extends StatelessWidget {
           errorBuilder: (_, __, ___) => const ColoredBox(color: deepGreen),
         ),
         Positioned(
-          bottom: constraints.maxHeight * .012,
-          left: 12,
-          right: 12,
+          left: 16,
+          right: 16,
+          bottom: 16,
           child: SafeArea(
             top: false,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-              decoration: BoxDecoration(
-                color: const Color(0xFF003B1D),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFFFD66A), width: 1),
-              ),
-              child: const Text(
-                'معًا .. نصنع لهم مستقبلًا أفضل',
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w800,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 64,
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const CharityShell())),
+                    icon: const Icon(Icons.login, size: 27),
+                    label: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('الدخول إلى التطبيق',
+                        style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF00652A),
+                      foregroundColor: Colors.white,
+                      elevation: 6,
+                      side: const BorderSide(color: Color(0xFFFFD66A), width: 2.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(36)),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: constraints.maxHeight * .095,
-          left: constraints.maxWidth * .11,
-          right: constraints.maxWidth * .11,
-          child: Semantics(
-            label: 'الدخول إلى التطبيق',
-            button: true,
-            child: SizedBox(
-              height: 64,
-              child: FilledButton.icon(
-                onPressed: () => Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const CharityShell())),
-                icon: const Icon(Icons.login, size: 27),
-                label: const FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text('الدخول إلى التطبيق',
-                    style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF003B1D),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFFFD66A), width: 1),
+                  ),
+                  child: const Text(
+                    'معًا .. نصنع لهم مستقبلًا أفضل',
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF00652A),
-                  foregroundColor: Colors.white,
-                  elevation: 6,
-                  side: const BorderSide(color: Color(0xFFFFD66A), width: 2.5),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(36)),
-                ),
-              ),
+              ],
             ),
           ),
         ),
