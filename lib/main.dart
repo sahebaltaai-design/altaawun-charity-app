@@ -321,6 +321,23 @@ class CharityShell extends StatefulWidget {
 
 class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver {
   String? _fcmToken;
+  bool _validNewsUrl(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null && uri.scheme == 'https' &&
+        (uri.host == 'aytamaliraq.com' || uri.host == 'www.aytamaliraq.com');
+  }
+
+  void _openNotificationNews(RemoteMessage message) {
+    final url = (message.data['url'] ?? '').toString();
+    if (!_validNewsUrl(url) || !mounted) return;
+    setState(() {
+      checkoutUrl = url;
+      selectedItem = null;
+      wpSelectedCategory = null;
+      page = 4;
+    });
+  }
+
   Future<void> _setupPush() async {
     try {
       final messaging = FirebaseMessaging.instance;
@@ -331,10 +348,20 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       FirebaseMessaging.instance.onTokenRefresh.listen((value) {
         if (mounted) setState(() => _fcmToken = value);
       });
+      FirebaseMessaging.onMessageOpenedApp.listen(_openNotificationNews);
+      final initial = await messaging.getInitialMessage();
+      if (initial != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _openNotificationNews(initial));
+      }
       FirebaseMessaging.onMessage.listen((message) {
         if (!mounted) return;
+        final url = (message.data['url'] ?? '').toString();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(message.notification?.title ?? 'إشعار جديد من الجمعية'),
+          action: _validNewsUrl(url) ? SnackBarAction(
+            label: 'قراءة الخبر',
+            onPressed: () => _openNotificationNews(message),
+          ) : null,
         ));
       });
     } catch (e) {
