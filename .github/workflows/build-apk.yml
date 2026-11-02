@@ -55,7 +55,7 @@ jobs:
 
       - name: Generate Android launcher icons from charity emblem
         run: |
-          python3 -m pip install --user Pillow
+          python3 -m pip install --user Pillow numpy
           python3 - <<'PY'
           from pathlib import Path
           from PIL import Image
