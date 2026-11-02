@@ -2,11 +2,12 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار ويدوية من لوحة التحكم.
- * Version: 1.1.0
+ * Version: 1.2.0
  */
 defined('ABSPATH') || exit;
 add_action('admin_menu', function () {
  add_menu_page('إشعارات الجمعية','إشعارات الجمعية','manage_options','altaawun-push','altaawun_push_page','dashicons-megaphone');
+ add_submenu_page('altaawun-push','إدارة النغمات','إدارة النغمات','manage_options','altaawun-tones','altaawun_tones_page');
 });
 function altaawun_push_page() {
  if (!current_user_can('manage_options')) return;
@@ -63,3 +64,61 @@ add_action('transition_post_status',function($new,$old,$post){
 
 add_action('add_meta_boxes_post',function(){add_meta_box('altaawun_push_type','نوع إشعار الجمعية',function($post){wp_nonce_field('altaawun_push_type','altaawun_push_type_nonce');$v=get_post_meta($post->ID,'_altaawun_notification_type',true);echo '<label><select name="altaawun_notification_type"><option value="normal">عادي</option><option value="urgent" '.selected($v,'urgent',false).'>عاجل</option></select></label>';},'post','side');});
 add_action('save_post_post',function($id){if (!isset($_POST['altaawun_push_type_nonce'])||!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['altaawun_push_type_nonce'])),'altaawun_push_type')||!current_user_can('edit_post',$id)||wp_is_post_revision($id))return;update_post_meta($id,'_altaawun_notification_type',sanitize_key(wp_unslash($_POST['altaawun_notification_type']??'normal'))==='urgent'?'urgent':'normal');});
+
+function altaawun_tones_page() {
+ if (!current_user_can('manage_options')) return;
+ $tones=get_option('altaawun_tones',[]);
+ if (!is_array($tones)) $tones=[];
+ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['altaawun_tones_nonce']) && check_admin_referer('altaawun_tones_action','altaawun_tones_nonce')) {
+  if (isset($_POST['altaawun_tone_upload']) && !empty($_FILES['tone_file']['name'])) {
+   require_once ABSPATH.'wp-admin/includes/file.php';
+   $file=$_FILES['tone_file'];
+   $allowed=['mp3'=>'audio/mpeg','wav'=>'audio/wav','ogg'=>'audio/ogg'];
+   $ext=strtolower(pathinfo(sanitize_file_name($file['name']),PATHINFO_EXTENSION));
+   if (!isset($allowed[$ext]) || $file['size']>5*1024*1024 || $file['size']<=0) {
+    echo '<div class="notice notice-error"><p>الملف غير مدعوم أو يتجاوز 5 ميغابايت.</p></div>';
+   } else {
+    $upload=wp_handle_upload($file,['test_form'=>false,'mimes'=>$allowed]);
+    if (!empty($upload['url']) && empty($upload['error'])) {
+     $id=wp_generate_uuid4();
+     $tones[$id]=['name'=>sanitize_text_field(wp_unslash($_POST['tone_name']??'')) ?: sanitize_file_name($file['name']),'url'=>esc_url_raw($upload['url']),'file'=>$upload['file']];
+     update_option('altaawun_tones',$tones,false);
+     echo '<div class="notice notice-success"><p>تم رفع النغمة بنجاح.</p></div>';
+    } else echo '<div class="notice notice-error"><p>'.esc_html($upload['error']??'فشل رفع الملف').'</p></div>';
+   }
+  }
+  if (isset($_POST['altaawun_tone_delete'])) {
+   $id=sanitize_text_field(wp_unslash($_POST['tone_id']??''));
+   if (isset($tones[$id])) {
+    $entry=$tones[$id];
+    $uploads=wp_get_upload_dir();
+    $root=realpath($uploads['basedir']);
+    $path=realpath($entry['file']??'');
+    if ($root && $path && str_starts_with($path,$root.DIRECTORY_SEPARATOR) && is_file($path)) wp_delete_file($path);
+    unset($tones[$id]);
+    update_option('altaawun_tones',$tones,false);
+   }
+  }
+ }
+ echo '<div class="wrap" dir="rtl"><h1>إدارة نغمات إشعارات الجمعية</h1>';
+ echo '<p>ارفع النغمات واستمع إليها. ملاحظة: رفع النغمة هنا لا يغير تلقائيًا صوت إشعارات Android عندما يكون التطبيق مغلقًا؛ يلزم ربطها بقنوات الإشعارات داخل التطبيق.</p>';
+ echo '<form method="post" enctype="multipart/form-data">';
+ wp_nonce_field('altaawun_tones_action','altaawun_tones_nonce');
+ echo '<p><input type="text" name="tone_name" placeholder="اسم النغمة" required class="regular-text"></p>';
+ echo '<p><input type="file" name="tone_file" accept=".mp3,.wav,.ogg,audio/*" required></p>';
+ echo '<p><button class="button button-primary" name="altaawun_tone_upload" value="1">رفع نغمة</button></p></form>';
+ echo '<h2>النغمات المرفوعة</h2><table class="widefat striped"><thead><tr><th>الاسم</th><th>استماع</th><th>إجراء</th></tr></thead><tbody>';
+ foreach ($tones as $id=>$tone) {
+  echo '<tr><td>'.esc_html($tone['name']).'</td><td><audio controls preload="none" src="'.esc_url($tone['url']).'"></audio></td><td>';
+  echo '<form method="post">';
+  wp_nonce_field('altaawun_tones_action','altaawun_tones_nonce');
+  echo '<input type="hidden" name="tone_id" value="'.esc_attr($id).'"><button class="button" name="altaawun_tone_delete" value="1" onclick="return confirm(\'حذف النغمة؟\')">حذف</button></form></td></tr>';
+ }
+ echo '</tbody></table></div>';
+}
+add_action('rest_api_init',function(){
+ register_rest_route('altaawun/v1','/tones',['methods'=>'GET','permission_callback'=>'__return_true','callback'=>function(){
+  $tones=get_option('altaawun_tones',[]);
+  return rest_ensure_response(array_values(array_map(function($tone){return ['name'=>$tone['name'],'url'=>$tone['url']];},is_array($tones)?$tones:[])));
+ }]);
+});
