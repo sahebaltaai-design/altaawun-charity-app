@@ -1173,12 +1173,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         const Text('أحدث الأخبار', style: TextStyle(color: deepGreen, fontSize: 22, fontWeight: FontWeight.w900)),
         TextButton(onPressed: () => go(4), child: const Text('عرض الكل')),
       ]),
-      Card(child: ListTile(
-        leading: const Icon(Icons.article, color: green, size: 35),
-        title: const Text('أخبار وأنشطة الجمعية', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text('تابع أحدث أخبار وأنشطة الجمعية'),
-        onTap: () => go(4),
-      )),
+      _newsFeed(homePreview: true),
+      Center(child: TextButton.icon(onPressed: () => go(4),
+        icon: const Icon(Icons.arrow_back), label: const Text('المزيد — جميع الأخبار'))),
     ])),
   ]);
 
@@ -1253,8 +1250,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     ]);
   }
 
+  Future<List<Map<String, dynamic>>>? _newsCache;
   Future<List<Map<String, dynamic>>> _fetchNews() async {
-    final uri = Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/posts?_embed=1&per_page=30&orderby=date&order=desc');
+    final uri = Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/posts?_embed=1&per_page=50&orderby=date&order=desc');
     final response = await http.get(uri).timeout(const Duration(seconds: 20));
     if (response.statusCode != 200) throw Exception('تعذر تحميل الأخبار');
     final data = jsonDecode(utf8.decode(response.bodyBytes));
@@ -1262,8 +1260,18 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     return data.whereType<Map<String, dynamic>>().toList();
   }
 
-  Widget _newsFeed() => FutureBuilder<List<Map<String, dynamic>>>(
-    future: _fetchNews(),
+  void _refreshNews() => setState(() { _newsCache = _fetchNews(); });
+
+  void _openNewsPost(Map<String, dynamic> post) => setState(() {
+    page = 4;
+    wpSelectedType = 'category';
+    wpSelectedCategory = null;
+    checkoutUrl = null;
+    selectedItem = Map<String, dynamic>.from(post);
+  });
+
+  Widget _newsFeed({bool homePreview = false}) => FutureBuilder<List<Map<String, dynamic>>>(
+    future: _newsCache ??= _fetchNews(),
     builder: (context, snapshot) {
       if (snapshot.connectionState != ConnectionState.done) {
         return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
@@ -1271,40 +1279,44 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       if (snapshot.hasError) {
         return Column(children: [
           const Text('تعذر تحميل الأخبار. تحقق من الإنترنت وحاول مجددًا.'),
-          TextButton.icon(onPressed: () => setState(() {}), icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
+          TextButton.icon(onPressed: _refreshNews, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
         ]);
       }
-      final posts = snapshot.data ?? [];
+      final allPosts = snapshot.data ?? [];
+      final posts = homePreview ? allPosts.take(10).toList() : allPosts.take(50).toList();
       if (posts.isEmpty) return const Center(child: Text('لا توجد أخبار منشورة حاليًا'));
-      return Column(children: [
-        for (final post in posts) Card(
-          clipBehavior: Clip.antiAlias,
-          margin: const EdgeInsets.only(bottom: 12),
-          child: InkWell(
-            onTap: () => setState(() {
-              wpSelectedType = 'category';
-              wpSelectedCategory = null;
-              checkoutUrl = null;
-              selectedItem = Map<String, dynamic>.from(post);
-            }),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              if (_postImage(post).isNotEmpty) Image.network(_postImage(post), height: 170, fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-              Padding(padding: const EdgeInsets.all(14), child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (!homePreview) Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text('آخر ' + posts.length.toString() + ' خبر', textAlign: TextAlign.right,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: deepGreen))),
+        for (final post in posts) Column(children: [
+          InkWell(
+            onTap: () => _openNewsPost(post),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   Text(_plainText((post['title']?['rendered'] ?? '').toString()),
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 6),
+                    textAlign: TextAlign.right, maxLines: 3, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 7),
                   Text((post['date'] ?? '').toString().split('T').first,
                     style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 6),
-                  const Text('قراءة الخبر', style: TextStyle(color: green)),
-                ],
-              )),
-            ]),
+                ])),
+                const SizedBox(width: 12),
+                ClipRRect(borderRadius: BorderRadius.circular(10), child:
+                  _postImage(post).isNotEmpty
+                    ? Image.network(_postImage(post), width: 92, height: 86, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox(width: 92, height: 86,
+                          child: Icon(Icons.article_outlined, color: green)))
+                    : const SizedBox(width: 92, height: 86,
+                        child: Icon(Icons.article_outlined, color: green, size: 35))),
+              ]),
+            ),
           ),
-        ),
+          const Divider(height: 1),
+        ]),
       ]);
     },
   );
