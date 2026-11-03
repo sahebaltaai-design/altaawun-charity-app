@@ -598,7 +598,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
-      icon: const Icon(Icons.arrow_forward), label: Text(wpSelectedType == 'product_cat' ? 'العودة إلى التبرع' : 'العودة إلى تفاصيل الخبر')),
+      icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
     Expanded(child: _CheckoutContent(key: ValueKey(checkoutUrl), url: checkoutUrl!)),
   ]);
 
@@ -984,6 +984,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     );
   }
 
+  void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; });
+
   void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; });
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -997,7 +999,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         Text('جمعية التعاون الخيرية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
         Text('مدرسة الأيتام وكفالتهم', style: TextStyle(fontSize: 10)),
       ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-      actions: page == 0 ? [IconButton(
+      actions: [IconButton(
+        tooltip: 'سلة الكفالات والتبرعات',
+        onPressed: _openCart,
+        icon: const Icon(Icons.shopping_cart_outlined, color: green),
+      ), if (page == 0) IconButton(
         tooltip: 'الإشعارات',
         onPressed: () => showDialog<void>(
           context: context,
@@ -1016,7 +1022,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           ),
         ),
         icon: const Icon(Icons.notifications_outlined, color: green),
-      )] : null,
+      )],
     ),
     drawer: Drawer(child: SafeArea(child: Column(children: [
       Container(width: double.infinity, padding: const EdgeInsets.all(24), color: green,
@@ -1028,6 +1034,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         subtitle: const Text('تُحدّث تلقائيًا من لوحة إدارة الموقع'),
         onTap: () { Navigator.pop(context); go(0); },
       ),
+      ListTile(leading: const Icon(Icons.shopping_cart_outlined, color: green),
+        title: const Text('سلة الكفالات والتبرعات'),
+        onTap: () { Navigator.pop(context); _openCart(); }),
       ListTile(
         leading: const Icon(Icons.tune, color: green),
         title: const Text('تخصيص الواجهة الرئيسية'),
