@@ -578,10 +578,17 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         child: Image.network(image, height: 240, fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 60))),
       const SizedBox(height: 12),
+      if (!isProduct) const Padding(padding: EdgeInsets.only(bottom: 10),
+        child: Text('تفاصيل الخبر', style: TextStyle(fontSize: 16, color: green, fontWeight: FontWeight.bold))),
       Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
       if (price.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(_plainText(price), style: const TextStyle(fontSize: 19, color: green))),
-      if (content.isNotEmpty) SizedBox(height: MediaQuery.sizeOf(context).height * 0.72, child: _HtmlContent(content: content, onLink: (url) => setState(() => checkoutUrl = url))),
+      if (content.isNotEmpty) SizedBox(height: MediaQuery.sizeOf(context).height * 0.72, child: _HtmlContent(content: content, onLink: (url) {
+        final uri = Uri.tryParse(url);
+        if (uri == null || uri.scheme != 'https') return;
+        if (uri.host != 'aytamaliraq.com' && uri.host != 'www.aytamaliraq.com') return;
+        setState(() => checkoutUrl = url);
+      })),
       if (isProduct) FilledButton.icon(
         onPressed: valid ? () => setState(() => checkoutUrl = link) : null,
         icon: const Icon(Icons.volunteer_activism), label: const Text('تبرع الآن')),
@@ -590,7 +597,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
-      icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
+      icon: const Icon(Icons.arrow_forward), label: Text(wpSelectedType == 'product_cat' ? 'العودة إلى التبرع' : 'العودة إلى تفاصيل الخبر')),
     Expanded(child: _CheckoutContent(key: ValueKey(checkoutUrl), url: checkoutUrl!)),
   ]);
 
