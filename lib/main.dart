@@ -1,3 +1,4 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -346,36 +347,65 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Future<void> _showNotificationPreferences() async {
     String selected = _notificationTone;
     bool vibration = _notificationVibration;
-    await showDialog<void>(context: context, builder: (dialogContext) =>
-      StatefulBuilder(builder: (context, update) => AlertDialog(
-        title: const Text('إعدادات الإشعارات'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          for (final option in const [
-            ('urgent', 'تنبيه الأخبار العاجلة'),
-            ('news', 'نغمة الأخبار'),
-            ('soft', 'نغمة هادئة'),
-            ('default', 'نغمة الهاتف الافتراضية'),
-          ]) RadioListTile<String>(
-            title: Text(option.$2), value: option.$1, groupValue: selected,
-            onChanged: (value) => update(() => selected = value ?? 'urgent'),
-          ),
-          SwitchListTile(title: const Text('الاهتزاز'), value: vibration,
-            onChanged: (value) => update(() => vibration = value)),
-          const Text('اختيار النغمة هنا يُحفظ، لكن تفعيل صوتها في إشعارات Android يحتاج إصدارًا يدعم قنوات الصوت.',
-            style: TextStyle(fontSize: 12)),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
-          FilledButton(onPressed: () async {
-            final prefs = await SharedPreferences.getInstance();
-            await prefs.setString('notification_tone', selected);
-            await prefs.setBool('notification_vibration', vibration);
-            if (!mounted) return;
-            setState(() { _notificationTone = selected; _notificationVibration = vibration; });
-            if (dialogContext.mounted) Navigator.pop(dialogContext);
-          }, child: const Text('حفظ')),
-        ],
-      )));
+    final preview = AudioPlayer();
+    String? playing;
+    try {
+      await showDialog<void>(context: context, builder: (dialogContext) =>
+        StatefulBuilder(builder: (context, update) => AlertDialog(
+          title: const Text('إعدادات الإشعارات'),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('استمع إلى النغمة قبل اختيارها وحفظها.'),
+            for (final option in const [
+              ('urgent', 'تنبيه الأخبار العاجلة'),
+              ('news', 'نغمة الأخبار'),
+              ('soft', 'نغمة هادئة'),
+              ('default', 'النغمة الافتراضية (معاينة تقريبية)'),
+            ]) Row(children: [
+              Expanded(child: RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                title: Text(option.$2, style: const TextStyle(fontSize: 13)),
+                value: option.$1, groupValue: selected,
+                onChanged: (value) => update(() => selected = value ?? 'urgent'),
+              )),
+              IconButton(
+                tooltip: 'استماع',
+                icon: const Icon(Icons.play_circle_outline),
+                onPressed: () async {
+                  await preview.stop();
+                  await preview.play(AssetSource('tones/${option.$1}.wav'));
+                  update(() => playing = option.$1);
+                },
+              ),
+              IconButton(
+                tooltip: 'إيقاف',
+                icon: const Icon(Icons.stop_circle_outlined),
+                onPressed: playing == option.$1 ? () async {
+                  await preview.stop();
+                  update(() => playing = null);
+                } : null,
+              ),
+            ]),
+            SwitchListTile(title: const Text('الاهتزاز'), value: vibration,
+              onChanged: (value) => update(() => vibration = value)),
+            const Text('هذه معاينة صوتية. اختيار صوت إشعارات Android الفعلي يتطلب ربط النغمات بقنوات الإشعارات.',
+              style: TextStyle(fontSize: 12)),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+            FilledButton(onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('notification_tone', selected);
+              await prefs.setBool('notification_vibration', vibration);
+              if (!mounted) return;
+              setState(() { _notificationTone = selected; _notificationVibration = vibration; });
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            }, child: const Text('حفظ')),
+          ],
+        )));
+    } finally {
+      await preview.stop();
+      await preview.dispose();
+    }
   }
 
   bool _validNewsUrl(String value) {
