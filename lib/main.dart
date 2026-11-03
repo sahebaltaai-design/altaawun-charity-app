@@ -1,3 +1,4 @@
+import 'charity_about_content.dart';
 import 'charity_account_page.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
@@ -1659,7 +1660,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ] else if (page == 4) ...[
         _newsFeed(),
       ] else if (page == 6) ...[
-        _feature(Icons.language, 'www.aytamaliraq.com'),
+        const CharityAboutContent(),
       ] else ...[
         _feature(Icons.info_outline, 'سيظهر المحتوى المعتمد بعد ربط لوحة إدارة الجمعية'),
       ],
