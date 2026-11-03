@@ -1073,7 +1073,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         crossAxisCount: _homeTileSize == 'small' ? 4 : (_homeTileSize == 'large' ? 2 : 3),
-        mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: .93,
+        mainAxisSpacing: 9, crossAxisSpacing: 9,
+        mainAxisExtent: _homeTileSize == 'small' ? 124 : (_homeTileSize == 'large' ? 174 : 148),
         children: [
           for (final category in wpCategories)
             Material(
@@ -1085,15 +1086,15 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                     category['id'] as int, category['name'] as String,
                     category['type'] as String),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const Icon(Icons.folder_open, size: 36, color: green),
-                  const SizedBox(height: 9),
+                  Icon(Icons.folder_open, size: _homeTileSize == 'small' ? 28 : 36, color: green),
+                  const SizedBox(height: 7),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(category['name'] as String,
+                    child: Flexible(child: Text(category['name'] as String,
                       textAlign: TextAlign.center,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      style: TextStyle(fontSize: _homeTileSize == 'small' ? 11 : 13, fontWeight: FontWeight.bold))),
                   ),
                 ]),
               ),
