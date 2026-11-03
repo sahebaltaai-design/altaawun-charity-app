@@ -460,7 +460,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   static const _refreshInterval = Duration(hours: 6);
   bool _fetchingCategories = false;
   int page = 0;
-  final names = const ['الرئيسية', 'كفالة الأيتام', 'المدرسة والتعليم', 'التبرعات والمساهمات', 'الأخبار والأنشطة', 'الصور والفيديوهات', 'عن الجمعية'];
+  final names = const ['الرئيسية', 'كفالة الأيتام', 'المدرسة والتعليم', 'التبرعات والمساهمات', 'الأخبار والأنشطة', 'الصور والفيديوهات', 'عن الجمعية', 'حسابي'];
   static const _defaultCategoryOrder = [2, 1, 3, 5, 4, 6];
   static const _categoryLabels = {
     2: 'المدرسة والتعليم', 1: 'كفالة الأيتام',
@@ -1044,11 +1044,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           ),
       ])),
     ]))),
-    body: checkoutUrl != null ? _inAppCheckout() : selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : _section(),
+    body: checkoutUrl != null ? _inAppCheckout() : selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
     bottomNavigationBar: NavigationBar(
       height: 72,
-      selectedIndex: [0, 1, 4, 3, 6].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 6].indexOf(page),
-      onDestinationSelected: (index) => go([0, 1, 4, 3, 6][index]),
+      selectedIndex: [0, 1, 4, 3, 7].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 6].indexOf(page),
+      onDestinationSelected: (index) => go([0, 1, 4, 3, 7][index]),
       destinations: const [
         NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
         NavigationDestination(icon: Icon(Icons.favorite_border), label: 'تبرع'),
@@ -1061,7 +1061,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   static const _icons = [
     Icons.home, Icons.favorite, Icons.school, Icons.volunteer_activism,
-    Icons.article, Icons.photo_library, Icons.menu_book,
+    Icons.article, Icons.photo_library, Icons.menu_book, Icons.person_outline,
   ];
 
   Widget _customSection(int id) => ListView(
@@ -1290,6 +1290,36 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ]);
     },
   );
+
+  Widget _accountPage() => ListView(padding: const EdgeInsets.all(18), children: [
+    const SizedBox(height: 18),
+    const Center(child: CircleAvatar(radius: 44, backgroundColor: Color(0xFFE0F2E9),
+      child: Icon(Icons.person_outline, size: 50, color: deepGreen))),
+    const SizedBox(height: 16),
+    const Center(child: Text('حسابي', style: TextStyle(
+      fontSize: 25, fontWeight: FontWeight.bold, color: deepGreen))),
+    const SizedBox(height: 12),
+    const Card(child: Padding(padding: EdgeInsets.all(16),
+      child: Text('أنت تتصفح التطبيق كزائر. تسجيل الدخول والحسابات الشخصية غير مفعّلة حاليًا.',
+        textAlign: TextAlign.center))),
+    const SizedBox(height: 12),
+    Card(child: ListTile(
+      leading: const Icon(Icons.notifications_outlined, color: green),
+      title: const Text('إعدادات الإشعارات'),
+      trailing: const Icon(Icons.chevron_left),
+      onTap: _showNotificationPreferences)),
+    Card(child: ListTile(
+      leading: const Icon(Icons.dashboard_customize_outlined, color: green),
+      title: const Text('تخصيص الواجهة الرئيسية'),
+      subtitle: const Text('ألوان المربعات والكتابة والترتيب'),
+      trailing: const Icon(Icons.chevron_left),
+      onTap: _manageCategories)),
+    Card(child: ListTile(
+      leading: const Icon(Icons.info_outline, color: green),
+      title: const Text('عن الجمعية'),
+      trailing: const Icon(Icons.chevron_left),
+      onTap: () => go(6))),
+  ]);
 
   Widget _section() {
     final descriptions = [
