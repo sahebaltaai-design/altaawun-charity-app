@@ -1427,7 +1427,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     },
   );
 
-  Widget _accountPage() => const CharityAccountPage();
+  Widget _accountPage() => CharityAccountPage(cartCount: _cartCount, onOpenCart: _openCart);
 
   Widget _section() {
     final descriptions = [
