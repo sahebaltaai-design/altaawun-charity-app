@@ -658,7 +658,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
       icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
-    Expanded(child: _CheckoutContent(url: checkoutUrl!, onCartCount: (count) {
+    Expanded(child: _CheckoutContent(url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', onCartCount: (count) {
       if (mounted && _cartCount != count) setState(() => _cartCount = count);
     })),
   ]);
@@ -1119,7 +1119,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           ),
       ])),
     ]))),
-    body: checkoutUrl != null ? _inAppCheckout() : selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
+    body: IndexedStack(index: checkoutUrl == null ? 0 : 1, children: [
+      selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
+      _inAppCheckout(),
+    ]),
     bottomNavigationBar: NavigationBar(
       height: 72,
       selectedIndex: [0, 1, 4, 3, 7].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 7].indexOf(page),
