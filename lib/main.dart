@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,20 +46,62 @@ const deepGreen = Color(0xFF004521);
 const red = Color(0xFFB70922);
 const ivory = Color(0xFFF8F8F5);
 
-class AltaawunApp extends StatelessWidget {
+final ValueNotifier<String> selectedAppFont = ValueNotifier('Tajawal');
+final ValueNotifier<String> selectedAppFontSize = ValueNotifier('medium');
+
+class AltaawunApp extends StatefulWidget {
   const AltaawunApp({super.key});
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'جمعية التعاون الخيرية',
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      scaffoldBackgroundColor: ivory,
-      colorScheme: ColorScheme.fromSeed(seedColor: green),
-      appBarTheme: const AppBarTheme(backgroundColor: green, foregroundColor: Colors.white, centerTitle: true),
+  State<AltaawunApp> createState() => _AltaawunAppState();
+}
+
+class _AltaawunAppState extends State<AltaawunApp> {
+  @override
+  void initState() {
+    super.initState();
+    _restoreTypography();
+  }
+
+  Future<void> _restoreTypography() async {
+    final prefs = await SharedPreferences.getInstance();
+    selectedAppFont.value = prefs.getString('app_font') ?? 'Tajawal';
+    selectedAppFontSize.value = prefs.getString('app_font_size') ?? 'medium';
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<String>(
+    valueListenable: selectedAppFont,
+    builder: (context, font, _) => ValueListenableBuilder<String>(
+      valueListenable: selectedAppFontSize,
+      builder: (context, size, _) {
+        final textTheme = switch (font) {
+          'Cairo' => GoogleFonts.cairoTextTheme(),
+          'Almarai' => GoogleFonts.almaraiTextTheme(),
+          'Amiri' => GoogleFonts.amiriTextTheme(),
+          _ => GoogleFonts.tajawalTextTheme(),
+        };
+        final scale = size == 'small' ? 0.9 : size == 'large' ? 1.15 : 1.0;
+        return MaterialApp(
+          title: 'جمعية التعاون الخيرية',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            useMaterial3: true,
+            textTheme: textTheme,
+            scaffoldBackgroundColor: ivory,
+            colorScheme: ColorScheme.fromSeed(seedColor: green),
+            appBarTheme: const AppBarTheme(backgroundColor: green, foregroundColor: Colors.white, centerTitle: true),
+          ),
+          builder: (context, child) => Directionality(
+            textDirection: TextDirection.rtl,
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child ?? const SizedBox(),
+            ),
+          ),
+          home: const SplashScreen(),
+        );
+      },
     ),
-    builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child ?? const SizedBox()),
-    home: const SplashScreen(),
   );
 }
 
@@ -453,6 +496,53 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       _notificationTone = prefs.getString('notification_tone') ?? 'urgent';
       _notificationVibration = prefs.getBool('notification_vibration') ?? true;
     });
+  }
+
+  Future<void> _showFontPreferences() async {
+    String font = selectedAppFont.value;
+    String size = selectedAppFontSize.value;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('نوع الخط وحجمه'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              for (final option in const ['Tajawal', 'Cairo', 'Almarai', 'Amiri'])
+                RadioListTile<String>(
+                  title: Text(option),
+                  value: option,
+                  groupValue: font,
+                  onChanged: (value) => refresh(() => font = value ?? 'Tajawal'),
+                ),
+              const Divider(),
+              const Text('حجم الخط'),
+              for (final option in const [('small', 'صغير'), ('medium', 'متوسط'), ('large', 'كبير')])
+                RadioListTile<String>(
+                  title: Text(option.$2),
+                  value: option.$1,
+                  groupValue: size,
+                  onChanged: (value) => refresh(() => size = value ?? 'medium'),
+                ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+            FilledButton(
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('app_font', font);
+                await prefs.setString('app_font_size', size);
+                selectedAppFont.value = font;
+                selectedAppFontSize.value = size;
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _showNotificationPreferences() async {
@@ -1164,6 +1254,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ListTile(leading: const Icon(Icons.notifications_active, color: green),
         title: const Text('إعدادات الإشعارات'),
         onTap: () { Navigator.pop(context); _showNotificationPreferences(); }),
+      ListTile(
+        leading: const Icon(Icons.text_fields, color: green),
+        title: const Text('نوع الخط وحجمه'),
+        subtitle: const Text('Tajawal، Cairo، Almarai، Amiri'),
+        onTap: () { Navigator.pop(context); _showFontPreferences(); },
+      ),
       Expanded(child: ListView(children: [
         for (var i = 0; i < names.length; i++)
           ListTile(
