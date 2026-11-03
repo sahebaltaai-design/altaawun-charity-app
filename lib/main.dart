@@ -430,6 +430,22 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     );
   }
 
+  Future<void> _syncNotificationToneTopic() async {
+    final tone = const ['urgent', 'news', 'soft', 'default'].contains(_notificationTone)
+        ? _notificationTone : 'default';
+    final desired = 'altaawun_tone_' + tone + (_notificationVibration ? '_vibrate' : '_silent');
+    final messaging = FirebaseMessaging.instance;
+    // Remove legacy broadcasts to prevent duplicate notifications.
+    await messaging.subscribeToTopic(desired);
+    for (final candidate in const ['urgent', 'news', 'soft', 'default']) {
+      for (final mode in const ['_vibrate', '_silent']) {
+        final topic = 'altaawun_tone_' + candidate + mode;
+        if (topic != desired) await messaging.unsubscribeFromTopic(topic);
+      }
+    }
+    await messaging.unsubscribeFromTopic('altaawun_updates');
+  }
+
   Future<void> _loadNotificationPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
@@ -493,6 +509,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
               await prefs.setBool('notification_vibration', vibration);
               if (!mounted) return;
               setState(() { _notificationTone = selected; _notificationVibration = vibration; });
+              try { await _syncNotificationToneTopic(); } catch (e) { debugPrint('Tone topic sync: $e'); }
               if (dialogContext.mounted) Navigator.pop(dialogContext);
             }, child: const Text('حفظ')),
           ],
@@ -524,7 +541,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     try {
       final messaging = FirebaseMessaging.instance;
       await messaging.requestPermission();
-      await messaging.subscribeToTopic('altaawun_updates');
+      await _syncNotificationToneTopic();
       final token = await messaging.getToken();
       if (mounted) setState(() => _fcmToken = token);
       FirebaseMessaging.instance.onTokenRefresh.listen((value) {
