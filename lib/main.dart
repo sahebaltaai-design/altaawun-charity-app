@@ -169,7 +169,8 @@ class _HtmlContentState extends State<_HtmlContent> {
 }
 class _CheckoutContent extends StatefulWidget {
   final String url;
-  const _CheckoutContent({super.key, required this.url});
+  final ValueChanged<int> onCartCount;
+  const _CheckoutContent({super.key, required this.url, required this.onCartCount});
   @override
   State<_CheckoutContent> createState() => _CheckoutContentState();
 }
@@ -180,15 +181,64 @@ class _CheckoutContentState extends State<_CheckoutContent> {
     super.initState();
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel('AltaawunCart', onMessageReceived: (message) {
+        final count = int.tryParse(message.message);
+        if (count != null && count >= 0 && mounted) widget.onCartCount(count);
+      })
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (request) {
           final uri = Uri.tryParse(request.url);
           return uri != null && uri.scheme == 'https'
               ? NavigationDecision.navigate : NavigationDecision.prevent;
         },
+        onPageFinished: (url) {
+          final uri = Uri.tryParse(url);
+          if (uri != null && (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
+            controller.runJavaScript(_cartWatcherScript);
+          }
+        },
       ))
       ..loadRequest(Uri.parse(widget.url));
   }
+  static const _cartWatcherScript = r'''(function(){
+  if(window.__altaawunCartInstalled) return;
+  window.__altaawunCartInstalled = true;
+  var last = -1, pending;
+  function parse(doc){
+    var fields = Array.from(doc.querySelectorAll(
+      '.woocommerce-cart-form input.qty, .wc-block-cart-items input.wc-block-components-quantity-selector__input, .wc-block-cart-items input[type="number"]'));
+    if(fields.length) return fields.reduce(function(sum,el){return sum+(parseInt(el.value,10)||0);},0);
+    var empty = doc.querySelector('.cart-empty, .wc-block-cart__empty-cart__title, .wc-block-cart__empty-cart');
+    if(empty) return 0;
+    var rows = doc.querySelectorAll('.woocommerce-cart-form .cart_item, .wc-block-cart-items__row');
+    if(rows.length) return rows.length;
+    return null;
+  }
+  function report(n){
+    if(n !== null && n >= 0 && n !== last && window.AltaawunCart){
+      last=n; window.AltaawunCart.postMessage(String(n));
+    }
+  }
+  function refresh(){
+    clearTimeout(pending);
+    pending=setTimeout(function(){
+      var current = parse(document);
+      if(/\/cart\/?($|[?#])/.test(location.pathname) && current !== null){report(current);return;}
+      fetch('/cart/?altaawun_cart_count=1',{credentials:'same-origin',cache:'no-store'})
+        .then(function(r){if(!r.ok)throw Error('cart');return r.text();})
+        .then(function(html){report(parse(new DOMParser().parseFromString(html,'text/html')));})
+        .catch(function(){});
+    },600);
+  }
+  refresh();
+  if(window.jQuery){
+    window.jQuery(document.body).on('added_to_cart removed_from_cart wc_fragments_refreshed updated_wc_div updated_cart_totals',refresh);
+  }
+  document.addEventListener('change',function(e){if(e.target.matches('input.qty'))refresh();});
+  new MutationObserver(function(m){
+    if(m.some(function(x){return x.addedNodes.length || x.removedNodes.length;}))refresh();
+  }).observe(document.body,{childList:true,subtree:true});
+})();''';
   @override
   void didUpdateWidget(covariant _CheckoutContent oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -339,6 +389,7 @@ class CharityShell extends StatefulWidget {
 }
 
 class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver {
+  int? _cartCount;
   String? _fcmToken;
   String _notificationTone = 'urgent';
   bool _notificationVibration = true;
@@ -607,7 +658,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
       icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
-    Expanded(child: _CheckoutContent(url: checkoutUrl!)),
+    Expanded(child: _CheckoutContent(url: checkoutUrl!, onCartCount: (count) {
+      if (mounted && _cartCount != count) setState(() => _cartCount = count);
+    })),
   ]);
 
   String _postImage(dynamic post) {
@@ -1010,7 +1063,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       actions: [IconButton(
         tooltip: 'سلة الكفالات والتبرعات',
         onPressed: _openCart,
-        icon: const Icon(Icons.shopping_cart_outlined, color: green),
+        icon: Badge(
+          isLabelVisible: _cartCount != null && _cartCount! > 0,
+          label: Text((_cartCount ?? 0).toString()),
+          child: const Icon(Icons.shopping_cart_outlined, color: green),
+        ),
       ), if (page == 0) IconButton(
         tooltip: 'الإشعارات',
         onPressed: () => showDialog<void>(
