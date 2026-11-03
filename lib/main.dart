@@ -989,6 +989,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         subtitle: const Text('تُحدّث تلقائيًا من لوحة إدارة الموقع'),
         onTap: () { Navigator.pop(context); go(0); },
       ),
+      ListTile(
+        leading: const Icon(Icons.tune, color: green),
+        title: const Text('تخصيص الواجهة الرئيسية'),
+        subtitle: const Text('ترتيب الأقسام وحجم المربعات وإخفاؤها'),
+        onTap: () { Navigator.pop(context); _manageCategories(); },
+      ),
       ListTile(leading: const Icon(Icons.notifications_active, color: green),
         title: const Text('إعدادات الإشعارات'),
         onTap: () { Navigator.pop(context); _showNotificationPreferences(); }),
