@@ -476,6 +476,20 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Map<int, String> customCategories = {};
   int? customPage;
   List<Map<String, dynamic>> wpCategories = [];
+  List<String> wpCategoryOrder = [];
+  Set<String> wpHiddenCategories = {};
+  String _wpKey(Map<String, dynamic> c) => '${c['type']}:${c['id']}';
+  List<Map<String, dynamic>> get _orderedWpCategories {
+    final items = [...wpCategories]..sort((a,b) {
+      final ai=wpCategoryOrder.indexOf(_wpKey(a));
+      final bi=wpCategoryOrder.indexOf(_wpKey(b));
+      if(ai<0 && bi<0) return 0;
+      if(ai<0) return 1;
+      if(bi<0) return -1;
+      return ai.compareTo(bi);
+    });
+    return items.where((c)=>!wpHiddenCategories.contains(_wpKey(c))).toList();
+  }
   bool wpLoading = true;
   String? wpError;
   int? wpSelectedCategory;
@@ -763,6 +777,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     if (!mounted) return;
     setState(() {
       _homeTileSize = ['small', 'medium', 'large'].contains(savedTileSize) ? savedTileSize : 'medium';
+      wpCategoryOrder = prefs.getStringList('home_wp_category_order') ?? [];
+      wpHiddenCategories = (prefs.getStringList('home_wp_category_hidden') ?? []).toSet();
       customCategories = custom;
       final valid = {..._defaultCategoryOrder, ...custom.keys};
       if (parsed != null && parsed.toSet().length == parsed.length &&
@@ -779,6 +795,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Future<void> _saveCategorySettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('home_tile_size', _homeTileSize);
+    await prefs.setStringList('home_wp_category_order', wpCategoryOrder);
+    await prefs.setStringList('home_wp_category_hidden', wpHiddenCategories.toList());
     await prefs.setStringList('home_category_order',
         categoryOrder.map((id) => '$id').toList());
     await prefs.setStringList('home_category_hidden',
@@ -805,142 +823,93 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   void _manageCategories() {
     showModalBottomSheet<void>(
-      context: context, isScrollControlled: true,
-      showDragHandle: true,
+      context: context, isScrollControlled: true, showDragHandle: true,
       builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, refreshSheet) => SafeArea(
-          child: SizedBox(
+        builder: (sheetContext, refreshSheet) {
+          final items = [...wpCategories]..sort((a,b) {
+            final ai=wpCategoryOrder.indexOf(_wpKey(a));
+            final bi=wpCategoryOrder.indexOf(_wpKey(b));
+            if(ai<0 && bi<0) return 0;
+            if(ai<0) return 1;
+            if(bi<0) return -1;
+            return ai.compareTo(bi);
+          });
+          return SafeArea(child: SizedBox(
             height: MediaQuery.sizeOf(sheetContext).height * .76,
             child: Column(children: [
-              const Padding(
-                padding: EdgeInsets.all(12),
-                child: Text('إدارة تصنيفات الصفحة الرئيسية',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              ),
-              const Text('اسحب علامة الترتيب، أو أخفِ التصنيف بالمفتاح'),
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(children: [
-                const Text('حجم مربعات الصفحة الرئيسية'),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'small', label: Text('صغير')),
-                    ButtonSegment(value: 'medium', label: Text('متوسط')),
-                    ButtonSegment(value: 'large', label: Text('كبير')),
-                  ],
-                  selected: {_homeTileSize},
-                  onSelectionChanged: (values) {
-                    refreshSheet(() => _homeTileSize = values.first);
-                    setState(() {});
-                    _saveCategorySettings();
-                  },
-                ),
-              ])),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: _CategoryAddField(
-                  onAdd: (name) => _addCategoryInline(name, refreshSheet),
-                ),
-              ),
-              Expanded(child: ReorderableListView.builder(
-                buildDefaultDragHandles: false,
-                itemCount: categoryOrder.length,
-                onReorder: (oldIndex, newIndex) {
-                  refreshSheet(() {
-                    if (newIndex > oldIndex) newIndex--;
-                    final item = categoryOrder.removeAt(oldIndex);
-                    categoryOrder.insert(newIndex, item);
-                  });
+              const Padding(padding: EdgeInsets.all(12), child: Text(
+                'تخصيص الواجهة الرئيسية',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text('اختر من تصنيفات WordPress الموجودة فقط، واسحب لتغيير ترتيب ظهورها في الصفحة الرئيسية.')),
+              Padding(padding: const EdgeInsets.all(12), child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value:'small',label:Text('صغير')),
+                  ButtonSegment(value:'medium',label:Text('متوسط')),
+                  ButtonSegment(value:'large',label:Text('كبير')),
+                ],
+                selected: {_homeTileSize},
+                onSelectionChanged: (values) {
+                  refreshSheet(() => _homeTileSize = values.first);
                   setState(() {});
                   _saveCategorySettings();
                 },
-                itemBuilder: (context, index) {
-                  final id = categoryOrder[index];
-                  return ListTile(
-                    key: ValueKey(id),
-                    leading: ReorderableDragStartListener(
-                      index: index,
-                      child: const Icon(Icons.drag_handle, color: green)),
-                    title: Text(_labelFor(id)),
-                    subtitle: customCategories.containsKey(id) ? const Text('تصنيف مخصص') : null,
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      if (customCategories.containsKey(id))
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, color: red),
-                          onPressed: () {
-                            refreshSheet(() {
-                              categoryOrder.remove(id);
-                              customCategories.remove(id);
-                              hiddenCategories.remove(id);
-                            });
-                            setState(() {});
-                            _saveCategorySettings();
-                          },
-                        ),
-                      Switch(
-                      value: !hiddenCategories.contains(id),
-                      onChanged: (visible) {
-                        refreshSheet(() {
-                          if (visible) {
-                            hiddenCategories.remove(id);
-                          } else {
-                            hiddenCategories.add(id);
-                          }
-                        });
-                        setState(() {});
-                        _saveCategorySettings();
-                      },
-                    ),
-                    ]),
-                  );
-                },
               )),
-              Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-                TextButton(
-                  onPressed: () async {
-                    final confirmed = await showDialog<bool>(
-                      context: sheetContext,
-                      builder: (dialogContext) => AlertDialog(
-                        title: const Text('استعادة الإعدادات الافتراضية'),
-                        content: const Text(
-                          'سيعود ترتيب التصنيفات الستة إلى وضعه الأصلي، '
-                          'وتظهر جميع التصنيفات المخفية. '
-                          'ستبقى التصنيفات المضافة محفوظة بعد التصنيفات الأساسية.'
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(dialogContext, false),
-                            child: const Text('إلغاء'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(dialogContext, true),
-                            child: const Text('استعادة'),
-                          ),
-                        ],
+              Expanded(child: items.isEmpty
+                ? const Center(child: Text('لا توجد تصنيفات محمّلة من WordPress. افتح تصنيفات التطبيق لتحديثها.'))
+                : ReorderableListView.builder(
+                  buildDefaultDragHandles: false,
+                  itemCount: items.length,
+                  onReorder: (oldIndex,newIndex) {
+                    if(newIndex>oldIndex) newIndex--;
+                    final moved=items.removeAt(oldIndex);
+                    items.insert(newIndex,moved);
+                    refreshSheet(() => wpCategoryOrder=items.map(_wpKey).toList());
+                    setState(() {});
+                    _saveCategorySettings();
+                  },
+                  itemBuilder: (context,index) {
+                    final item=items[index];
+                    final key=_wpKey(item);
+                    return ListTile(
+                      key: ValueKey(key),
+                      leading: ReorderableDragStartListener(
+                        index:index, child:const Icon(Icons.drag_handle,color:green)),
+                      title: Text(item['name'] as String),
+                      subtitle: Text(item['type']=='product_cat'?'تصنيف منتجات':'تصنيف مقالات'),
+                      trailing: Switch(
+                        value: !wpHiddenCategories.contains(key),
+                        onChanged: (visible) {
+                          refreshSheet(() {
+                            if(visible) {wpHiddenCategories.remove(key);}
+                            else {wpHiddenCategories.add(key);}
+                          });
+                          setState(() {});
+                          _saveCategorySettings();
+                        },
                       ),
                     );
-                    if (confirmed != true || !mounted || !sheetContext.mounted) return;
-                    refreshSheet(() {
-                      categoryOrder = [..._defaultCategoryOrder, ...customCategories.keys];
-                      hiddenCategories.clear();
-                    });
-                    setState(() {});
-                    await _saveCategorySettings();
-                    if (sheetContext.mounted) {
-                      ScaffoldMessenger.of(sheetContext).showSnackBar(
-                        const SnackBar(content: Text('تمت استعادة الترتيب الافتراضي وإظهار جميع التصنيفات')),
-                      );
-                    }
                   },
-                  child: const Text('استعادة الترتيب الافتراضي'),
-                ),
+                )),
+              Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+                TextButton(onPressed: () {
+                  refreshSheet(() {
+                    wpCategoryOrder=[];
+                    wpHiddenCategories.clear();
+                    _homeTileSize='medium';
+                  });
+                  setState(() {});
+                  _saveCategorySettings();
+                }, child: const Text('استعادة الافتراضي')),
                 const Spacer(),
-                FilledButton(
-                  onPressed: () => Navigator.pop(sheetContext),
-                  child: const Text('تم'),
-                ),
+                FilledButton(onPressed: () async {
+                  await _saveCategorySettings();
+                  if(sheetContext.mounted) Navigator.pop(sheetContext);
+                }, child: const Text('حفظ')),
               ])),
             ]),
-          ),
-        ),
+          ));
+        },
       ),
     );
   }
@@ -1076,7 +1045,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         mainAxisSpacing: 9, crossAxisSpacing: 9,
         mainAxisExtent: _homeTileSize == 'small' ? 124 : (_homeTileSize == 'large' ? 174 : 148),
         children: [
-          for (final category in wpCategories)
+          for (final category in _orderedWpCategories)
             Material(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
