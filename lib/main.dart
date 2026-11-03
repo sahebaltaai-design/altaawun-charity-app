@@ -584,7 +584,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
       if (price.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(_plainText(price), style: const TextStyle(fontSize: 19, color: green))),
-      if (content.isNotEmpty) SizedBox(height: MediaQuery.sizeOf(context).height * 0.72, child: _HtmlContent(content: content, onLink: (url) {
+      if (content.isNotEmpty && isProduct) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_plainText(content), style: const TextStyle(fontSize: 16, height: 1.7))),
+      if (content.isNotEmpty && !isProduct) SizedBox(height: MediaQuery.sizeOf(context).height * 0.72, child: _HtmlContent(content: content, onLink: (url) {
         final uri = Uri.tryParse(url);
         if (uri == null || uri.scheme != 'https') return;
         if (uri.host != 'aytamaliraq.com' && uri.host != 'www.aytamaliraq.com') return;
@@ -592,7 +593,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       })),
       if (isProduct) FilledButton.icon(
         onPressed: valid ? () => setState(() => checkoutUrl = link) : null,
-        icon: const Icon(Icons.volunteer_activism), label: const Text('تبرع الآن')),
+        icon: const Icon(Icons.shopping_cart_outlined), label: const Text('اختيار الكفالة وإضافتها للسلة')),
     ]);
   }
 
