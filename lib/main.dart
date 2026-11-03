@@ -1047,7 +1047,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     body: checkoutUrl != null ? _inAppCheckout() : selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
     bottomNavigationBar: NavigationBar(
       height: 72,
-      selectedIndex: [0, 1, 4, 3, 7].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 6].indexOf(page),
+      selectedIndex: [0, 1, 4, 3, 7].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 7].indexOf(page),
       onDestinationSelected: (index) => go([0, 1, 4, 3, 7][index]),
       destinations: const [
         NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
