@@ -334,6 +334,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   String? _fcmToken;
   String _notificationTone = 'urgent';
   bool _notificationVibration = true;
+  String _homeTileSize = 'medium';
 
   Future<void> _loadNotificationPreferences() async {
     final prefs = await SharedPreferences.getInstance();
@@ -747,6 +748,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Future<void> _loadCategorySettings() async {
     final prefs = await SharedPreferences.getInstance();
     final savedOrder = prefs.getStringList('home_category_order');
+    final savedTileSize = prefs.getString('home_tile_size') ?? 'medium';
     final parsed = savedOrder?.map(int.tryParse).whereType<int>().toList();
     final savedHidden = prefs.getStringList('home_category_hidden') ?? [];
     final savedCustom = prefs.getStringList('home_custom_categories') ?? [];
@@ -760,6 +762,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     }
     if (!mounted) return;
     setState(() {
+      _homeTileSize = ['small', 'medium', 'large'].contains(savedTileSize) ? savedTileSize : 'medium';
       customCategories = custom;
       final valid = {..._defaultCategoryOrder, ...custom.keys};
       if (parsed != null && parsed.toSet().length == parsed.length &&
@@ -775,6 +778,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   Future<void> _saveCategorySettings() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('home_tile_size', _homeTileSize);
     await prefs.setStringList('home_category_order',
         categoryOrder.map((id) => '$id').toList());
     await prefs.setStringList('home_category_hidden',
@@ -814,6 +818,22 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               ),
               const Text('اسحب علامة الترتيب، أو أخفِ التصنيف بالمفتاح'),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Column(children: [
+                const Text('حجم مربعات الصفحة الرئيسية'),
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'small', label: Text('صغير')),
+                    ButtonSegment(value: 'medium', label: Text('متوسط')),
+                    ButtonSegment(value: 'large', label: Text('كبير')),
+                  ],
+                  selected: {_homeTileSize},
+                  onSelectionChanged: (values) {
+                    refreshSheet(() => _homeTileSize = values.first);
+                    setState(() {});
+                    _saveCategorySettings();
+                  },
+                ),
+              ])),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: _CategoryAddField(
@@ -1046,7 +1066,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: 3, mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: .93,
+        crossAxisCount: _homeTileSize == 'small' ? 4 : (_homeTileSize == 'large' ? 2 : 3),
+        mainAxisSpacing: 9, crossAxisSpacing: 9, childAspectRatio: .93,
         children: [
           for (final category in wpCategories)
             Material(
