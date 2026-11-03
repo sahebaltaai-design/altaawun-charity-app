@@ -1203,6 +1203,38 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     ]);
   }
 
+  Widget _donationCategories() {
+    final categories = wpCategories.where((c) => c['type'] == 'product_cat').toList();
+    if (wpLoading && wpCategories.isEmpty) {
+      return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
+    }
+    if (categories.isEmpty) {
+      return Column(children: [
+        const Text('لا توجد حالات تبرع أو كفالة منشورة حاليًا.'),
+        TextButton.icon(onPressed: () => _loadWordPressCategories(),
+          icon: const Icon(Icons.refresh), label: const Text('تحديث الحالات')),
+      ]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('حالات التبرع والكفالة', style: TextStyle(
+        fontSize: 21, fontWeight: FontWeight.bold, color: deepGreen)),
+      const SizedBox(height: 12),
+      for (final category in categories) Card(
+        child: ListTile(
+          leading: const Icon(Icons.volunteer_activism, color: green),
+          title: Text((category['name'] ?? '').toString()),
+          subtitle: const Text('عرض الحالات والتفاصيل'),
+          trailing: const Icon(Icons.chevron_left),
+          onTap: () => _openWordPressCategory(
+            category['id'] as int, (category['name'] ?? '').toString(), 'product_cat'),
+        ),
+      ),
+      const Padding(padding: EdgeInsets.all(8),
+        child: Text('يتم إتمام أي تبرع متاح عبر موقع الجمعية داخل التطبيق، ولا يجمع التطبيق بيانات الدفع مباشرة.',
+          textAlign: TextAlign.center, style: TextStyle(fontSize: 12))),
+    ]);
+  }
+
   Future<List<Map<String, dynamic>>> _fetchNews() async {
     final uri = Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/posts?_embed=1&per_page=30&orderby=date&order=desc');
     final response = await http.get(uri).timeout(const Duration(seconds: 20));
@@ -1296,8 +1328,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         _feature(Icons.school, 'المرافق والمدرسون'),
         _feature(Icons.photo_library, 'الصور والفيديوهات'),
       ] else if (page == 3) ...[
-        _feature(Icons.lock_outline, 'سيُربط الدفع ببوابة آمنة بعد اعتمادها'),
-        _disabledAction('التبرع الإلكتروني — قريبًا'),
+        _donationCategories(),
       ] else if (page == 4) ...[
         _newsFeed(),
       ] else if (page == 6) ...[
