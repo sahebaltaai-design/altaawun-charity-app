@@ -479,6 +479,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   List<String> wpCategoryOrder = [];
   Set<String> wpHiddenCategories = {};
   Map<String, int> wpCategoryColors = {};
+  Map<String, int> wpCategoryTextColors = {};
+  static const _textColors = <Color>[
+    Color(0xFF111111), Color(0xFF00552F), Color(0xFF9B1C1C),
+    Color(0xFF163C8C), Color(0xFF663399), Color(0xFFFFFFFF),
+  ];
   static const _tileColors = <Color>[
     Colors.white, Color(0xFFE0F2E9), Color(0xFFFFE9E9),
     Color(0xFFFFF1D5), Color(0xFFE6EEFF), Color(0xFFF0E6FF),
@@ -790,6 +795,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         final raw = jsonDecode(prefs.getString('home_wp_category_colors') ?? '{}') as Map;
         wpCategoryColors = raw.map((k,v) => MapEntry(k.toString(), (v as num).toInt()));
       } catch (_) { wpCategoryColors = {}; }
+      try {
+        final raw = jsonDecode(prefs.getString('home_wp_category_text_colors') ?? '{}') as Map;
+        wpCategoryTextColors = raw.map((k,v) => MapEntry(k.toString(), (v as num).toInt()));
+      } catch (_) { wpCategoryTextColors = {}; }
       customCategories = custom;
       final valid = {..._defaultCategoryOrder, ...custom.keys};
       if (parsed != null && parsed.toSet().length == parsed.length &&
@@ -809,6 +818,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     await prefs.setStringList('home_wp_category_order', wpCategoryOrder);
     await prefs.setStringList('home_wp_category_hidden', wpHiddenCategories.toList());
     await prefs.setString('home_wp_category_colors', jsonEncode(wpCategoryColors));
+    await prefs.setString('home_wp_category_text_colors', jsonEncode(wpCategoryTextColors));
     await prefs.setStringList('home_category_order',
         categoryOrder.map((id) => '$id').toList());
     await prefs.setStringList('home_category_hidden',
@@ -908,6 +918,24 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                               ])),
                           ],
                         ),
+                        PopupMenuButton<int>(
+                          tooltip: 'لون الكتابة',
+                          icon: Icon(Icons.format_color_text, color: Color(wpCategoryTextColors[key] ?? 0xFF111111)),
+                          onSelected: (value) {
+                            refreshSheet(() => wpCategoryTextColors[key] = value);
+                            setState(() {});
+                            _saveCategorySettings();
+                          },
+                          itemBuilder: (_) => [
+                            for (final color in _textColors)
+                              PopupMenuItem<int>(value: color.toARGB32(), child: Row(children: [
+                                Container(width: 24, height: 24, decoration: BoxDecoration(
+                                  color: color, border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(5))),
+                                const SizedBox(width: 10),
+                                const Text('لون الكتابة'),
+                              ])),
+                          ],
+                        ),
                         Switch(
                         value: !wpHiddenCategories.contains(key),
                         onChanged: (visible) {
@@ -930,6 +958,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                     wpHiddenCategories.clear();
                     _homeTileSize='medium';
                     wpCategoryColors.clear();
+                    wpCategoryTextColors.clear();
                   });
                   setState(() {});
                   _saveCategorySettings();
@@ -1096,7 +1125,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                       textAlign: TextAlign.center,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: _homeTileSize == 'small' ? 11 : 13, fontWeight: FontWeight.bold))),
+                      style: TextStyle(fontSize: _homeTileSize == 'small' ? 11 : 13, fontWeight: FontWeight.bold, color: Color(wpCategoryTextColors[_wpKey(category)] ?? 0xFF111111)))),
                   ),
                 ]),
               ),
