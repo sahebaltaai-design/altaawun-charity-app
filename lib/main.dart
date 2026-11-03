@@ -1194,27 +1194,76 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       RegExp(r'كفال|يتيم|أيتام|ايتام|orphan|sponsor', caseSensitive: false)
         .hasMatch((c['name'] ?? '').toString())).toList();
     if (wpLoading && wpCategories.isEmpty) {
-      return const Padding(padding: EdgeInsets.all(20),
-        child: Center(child: CircularProgressIndicator()));
+      return const Center(child: Padding(padding: EdgeInsets.all(20),
+        child: CircularProgressIndicator()));
     }
     if (categories.isEmpty) {
       return const Padding(padding: EdgeInsets.all(16),
-        child: Text('لعرض الأيتام هنا، اختر تصنيف منتجات الكفالة من لوحة ووردبريس ← تصنيفات التطبيق. ستظهر المنتجات المنشورة تلقائيًا.',
-          textAlign: TextAlign.center));
+        child: Text('لا يوجد تصنيف كفالات منشور حاليًا', textAlign: TextAlign.center));
     }
+    final category = categories.first;
+    final id = category['id'] as int;
+    final title = (category['name'] ?? 'اكفل يتيمًا').toString();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const Text('الأيتام المتاحون للكفالة',
         style: TextStyle(fontSize: 21, color: deepGreen, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
-      for (final category in categories)
-        Card(child: ListTile(
-          leading: const Icon(Icons.favorite, color: green),
-          title: Text((category['name'] ?? '').toString()),
-          subtitle: const Text('عرض الصور والتفاصيل والكفالة'),
-          trailing: const Icon(Icons.chevron_left),
-          onTap: () => _openWordPressCategory(
-            category['id'] as int, (category['name'] ?? '').toString(), 'product_cat'),
-        )),
+      FutureBuilder<http.Response>(
+        future: http.get(Uri.parse('$_site/wp-json/altaawun/v1/products?category=$id'))
+          .timeout(const Duration(seconds: 15)),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: Padding(padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator()));
+          }
+          if (snapshot.hasError || snapshot.data?.statusCode != 200) {
+            return const Text('تعذر تحميل الأيتام، تحقق من اتصال الإنترنت');
+          }
+          try {
+            final decoded = jsonDecode(utf8.decode(snapshot.data!.bodyBytes));
+            final products = (decoded['products'] as List).whereType<Map>().take(10).toList();
+            if (products.isEmpty) return const Text('لا توجد كفالات منشورة حاليًا');
+            return Column(children: [
+              for (final product in products) Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(padding: const EdgeInsets.all(12), child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text((product['name'] ?? '').toString(), textAlign: TextAlign.right,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 6),
+                      Text((product['price'] ?? '').toString(),
+                        style: const TextStyle(fontSize: 15, color: green)),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: () => setState(() {
+                          wpSelectedType = 'product_cat';
+                          wpSelectedCategory = id;
+                          wpSelectedTitle = title;
+                          selectedItem = Map<String, dynamic>.from(product);
+                          checkoutUrl = null;
+                        }),
+                        child: const Text('اكفل الآن')),
+                    ])),
+                    const SizedBox(width: 12),
+                    ClipRRect(borderRadius: BorderRadius.circular(9),
+                      child: (product['image'] ?? '').toString().isNotEmpty
+                        ? Image.network((product['image'] ?? '').toString(), width: 100, height: 112,
+                            fit: BoxFit.cover, errorBuilder: (_, __, ___) =>
+                              const SizedBox(width: 100, child: Icon(Icons.person_outline)))
+                        : const SizedBox(width: 100, height: 112,
+                            child: Icon(Icons.person_outline, color: green, size: 44))),
+                  ]),
+                )),
+              TextButton.icon(
+                onPressed: () => _openWordPressCategory(id, title, 'product_cat'),
+                icon: const Icon(Icons.arrow_back), label: const Text('المزيد — جميع الأيتام')),
+            ]);
+          } catch (_) {
+            return const Text('تعذر قراءة بيانات الكفالات');
+          }
+        },
+      ),
     ]);
   }
 
