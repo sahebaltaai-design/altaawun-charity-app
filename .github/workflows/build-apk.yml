@@ -26,6 +26,33 @@ jobs:
         with:
           channel: stable
 
+      - name: Generate preview notification sounds
+        run: |
+          python3 - <<'PY'
+          import math, wave, struct
+          from pathlib import Path
+          out = Path('assets/tones')
+          out.mkdir(parents=True, exist_ok=True)
+          sr=22050
+          tones = {
+              'urgent': [(880,.16),(0,.09),(1100,.18),(0,.08),(880,.23)],
+              'news': [(523,.22),(659,.22),(784,.32)],
+              'soft': [(392,.36),(523,.40)],
+              'default': [(660,.18),(0,.08),(660,.22)],
+          }
+          for name, notes in tones.items():
+              samples=[]
+              for freq,duration in notes:
+                  count=int(sr*duration)
+                  for i in range(count):
+                      fade=min(1,i/(sr*.015),(count-i)/(sr*.045))
+                      v=0 if not freq else math.sin(2*math.pi*freq*i/sr)*max(0,fade)*.3
+                      samples.append(struct.pack('<h',int(v*32767)))
+              with wave.open(str(out/f'{name}.wav'),'wb') as f:
+                  f.setnchannels(1);f.setsampwidth(2);f.setframerate(sr)
+                  f.writeframes(b''.join(samples))
+          PY
+
       - name: Create Android platform
         run: |
           flutter create --platforms=android \
