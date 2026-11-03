@@ -12,16 +12,32 @@ import 'package:flutter/material.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  final notifications = FlutterLocalNotificationsPlugin();
-  await notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(
-    const AndroidNotificationChannel('altaawun_urgent_v1', 'الأخبار العاجلة',
-      description: 'إشعارات الأخبار العاجلة مع الاهتزاز', importance: Importance.max,
-      playSound: true, enableVibration: true));
-  await notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(
-    const AndroidNotificationChannel('altaawun_normal_v1', 'الأخبار العادية',
-      description: 'إشعارات الأخبار والأنشطة', importance: Importance.high,
-      playSound: true, enableVibration: false));
+  await _initializeNotificationChannels();
   runApp(const AltaawunApp());
+}
+
+const _notificationChannelPrefix = 'altaawun_tone_v2_';
+final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+
+Future<void> _initializeNotificationChannels() async {
+  await _localNotifications.initialize(const InitializationSettings(
+    android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+  ));
+  final android = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  for (final tone in const ['urgent', 'news', 'soft', 'default']) {
+    for (final vibration in [true, false]) {
+      final isDefault = tone == 'default';
+      await android?.createNotificationChannel(AndroidNotificationChannel(
+        _notificationChannelPrefix + tone + (vibration ? '_vibrate' : '_silent'),
+        'إشعارات الجمعية - ' + tone + (vibration ? ' مع اهتزاز' : ' بدون اهتزاز'),
+        description: 'قناة صوت إشعارات الجمعية',
+        importance: Importance.high,
+        playSound: true,
+        sound: isDefault ? null : RawResourceAndroidNotificationSound('altaawun_' + tone),
+        enableVibration: vibration,
+      ));
+    }
+  }
 }
 
 const green = Color(0xFF00642D);
@@ -396,6 +412,24 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   bool _notificationVibration = true;
   String _homeTileSize = 'medium';
 
+  Future<void> _showForegroundNotification(RemoteMessage message) async {
+    final tone = const ['urgent', 'news', 'soft', 'default'].contains(_notificationTone)
+        ? _notificationTone : 'default';
+    final channelId = _notificationChannelPrefix + tone + (_notificationVibration ? '_vibrate' : '_silent');
+    await _localNotifications.show(
+      message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      message.notification?.title ?? 'جمعية التعاون الخيرية',
+      message.notification?.body ?? 'لديك إشعار جديد',
+      NotificationDetails(android: AndroidNotificationDetails(
+        channelId, 'إشعارات الجمعية',
+        importance: Importance.high, priority: Priority.high,
+        playSound: true,
+        sound: tone == 'default' ? null : RawResourceAndroidNotificationSound('altaawun_' + tone),
+        enableVibration: _notificationVibration,
+      )),
+    );
+  }
+
   Future<void> _loadNotificationPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
@@ -448,7 +482,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             ]),
             SwitchListTile(title: const Text('الاهتزاز'), value: vibration,
               onChanged: (value) => update(() => vibration = value)),
-            const Text('هذه معاينة صوتية. اختيار صوت إشعارات Android الفعلي يتطلب ربط النغمات بقنوات الإشعارات.',
+            const Text('تُطبّق النغمة المختارة أثناء فتح التطبيق. إشعارات الخلفية تعتمد على قناة Android وإعدادات Firebase.',
               style: TextStyle(fontSize: 12)),
           ])),
           actions: [
@@ -503,6 +537,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       }
       FirebaseMessaging.onMessage.listen((message) {
         if (!mounted) return;
+        _showForegroundNotification(message);
         final url = (message.data['url'] ?? '').toString();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(message.notification?.title ?? 'إشعار جديد من الجمعية'),
