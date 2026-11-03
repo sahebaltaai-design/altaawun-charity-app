@@ -4,7 +4,9 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class CharityAccountPage extends StatefulWidget {
-  const CharityAccountPage({super.key});
+  final int? cartCount;
+  final VoidCallback onOpenCart;
+  const CharityAccountPage({super.key, required this.cartCount, required this.onOpenCart});
   @override
   State<CharityAccountPage> createState() => _AccountState();
 }
@@ -123,7 +125,18 @@ class _AccountState extends State<CharityAccountPage> {
       textAlign: TextAlign.center, style: const TextStyle(color: Colors.deepOrange))),
     if (user != null) ...[
       Card(child: ListTile(title: const Text('البريد الإلكتروني'), subtitle: Text(user!['email']?.toString() ?? ''))),
-      Row(children: [const Expanded(child: Text('طلباتي وتبرعاتي', style: TextStyle(fontWeight: FontWeight.bold))),
+      const SizedBox(height: 16),
+      const Text('كفالاتي في السلة', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      Card(child: ListTile(
+        leading: const Icon(Icons.shopping_cart_outlined, color: Color(0xFF00652A)),
+        title: Text(widget.cartCount == null ? 'عرض سلة الكفالات' :
+          'عدد الكفالات في السلة: ' + widget.cartCount.toString()),
+        subtitle: const Text('راجع الأيتام والمبالغ قبل إتمام التبرع'),
+        trailing: const Icon(Icons.chevron_left),
+        onTap: widget.onOpenCart,
+      )),
+      const SizedBox(height: 14),
+      Row(children: [const Expanded(child: Text('كفالاتي وطلباتي', style: TextStyle(fontWeight: FontWeight.bold))),
         IconButton(onPressed: busy ? null : loadOrders, icon: const Icon(Icons.refresh))]),
       if (orders.isEmpty) const Card(child: ListTile(title: Text('لا توجد طلبات مرتبطة بالحساب'))),
       for (final order in orders) if (order is Map) Card(child: ListTile(
