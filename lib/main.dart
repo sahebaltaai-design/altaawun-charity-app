@@ -1196,6 +1196,64 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     ]);
   }
 
+  Future<List<Map<String, dynamic>>> _fetchNews() async {
+    final uri = Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/posts?_embed=1&per_page=30&orderby=date&order=desc');
+    final response = await http.get(uri).timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) throw Exception('تعذر تحميل الأخبار');
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    if (data is! List) throw Exception('استجابة غير متوقعة');
+    return data.whereType<Map<String, dynamic>>().toList();
+  }
+
+  Widget _newsFeed() => FutureBuilder<List<Map<String, dynamic>>>(
+    future: _fetchNews(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+      }
+      if (snapshot.hasError) {
+        return Column(children: [
+          const Text('تعذر تحميل الأخبار. تحقق من الإنترنت وحاول مجددًا.'),
+          TextButton.icon(onPressed: () => setState(() {}), icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
+        ]);
+      }
+      final posts = snapshot.data ?? [];
+      if (posts.isEmpty) return const Center(child: Text('لا توجد أخبار منشورة حاليًا'));
+      return Column(children: [
+        for (final post in posts) Card(
+          clipBehavior: Clip.antiAlias,
+          margin: const EdgeInsets.only(bottom: 12),
+          child: InkWell(
+            onTap: () {
+              final link = (post['link'] ?? '').toString();
+              final uri = Uri.tryParse(link);
+              if (uri != null && uri.scheme == 'https' &&
+                  (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => DonationWebScreen(url: link)));
+              }
+            },
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (_postImage(post).isNotEmpty) Image.network(_postImage(post), height: 170, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+              Padding(padding: const EdgeInsets.all(14), child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_plainText((post['title']?['rendered'] ?? '').toString()),
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Text((post['date'] ?? '').toString().split('T').first,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  const Text('قراءة الخبر', style: TextStyle(color: green)),
+                ],
+              )),
+            ]),
+          ),
+        ),
+      ]);
+    },
+  );
+
   Widget _section() {
     final descriptions = [
       '',
@@ -1235,6 +1293,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ] else if (page == 3) ...[
         _feature(Icons.lock_outline, 'سيُربط الدفع ببوابة آمنة بعد اعتمادها'),
         _disabledAction('التبرع الإلكتروني — قريبًا'),
+      ] else if (page == 4) ...[
+        _newsFeed(),
       ] else if (page == 6) ...[
         _feature(Icons.language, 'www.aytamaliraq.com'),
       ] else ...[
