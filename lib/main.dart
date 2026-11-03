@@ -1088,9 +1088,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   Icon(Icons.folder_open, size: _homeTileSize == 'small' ? 28 : 36, color: green),
                   const SizedBox(height: 7),
-                  Padding(
+                  Flexible(child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Flexible(child: Text(category['name'] as String,
+                    child: Text(category['name'] as String,
                       textAlign: TextAlign.center,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
