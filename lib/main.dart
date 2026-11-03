@@ -1,3 +1,4 @@
+import 'charity_account_page.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
@@ -1291,35 +1292,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     },
   );
 
-  Widget _accountPage() => ListView(padding: const EdgeInsets.all(18), children: [
-    const SizedBox(height: 18),
-    const Center(child: CircleAvatar(radius: 44, backgroundColor: Color(0xFFE0F2E9),
-      child: Icon(Icons.person_outline, size: 50, color: deepGreen))),
-    const SizedBox(height: 16),
-    const Center(child: Text('حسابي', style: TextStyle(
-      fontSize: 25, fontWeight: FontWeight.bold, color: deepGreen))),
-    const SizedBox(height: 12),
-    const Card(child: Padding(padding: EdgeInsets.all(16),
-      child: Text('أنت تتصفح التطبيق كزائر. تسجيل الدخول والحسابات الشخصية غير مفعّلة حاليًا.',
-        textAlign: TextAlign.center))),
-    const SizedBox(height: 12),
-    Card(child: ListTile(
-      leading: const Icon(Icons.notifications_outlined, color: green),
-      title: const Text('إعدادات الإشعارات'),
-      trailing: const Icon(Icons.chevron_left),
-      onTap: _showNotificationPreferences)),
-    Card(child: ListTile(
-      leading: const Icon(Icons.dashboard_customize_outlined, color: green),
-      title: const Text('تخصيص الواجهة الرئيسية'),
-      subtitle: const Text('ألوان المربعات والكتابة والترتيب'),
-      trailing: const Icon(Icons.chevron_left),
-      onTap: _manageCategories)),
-    Card(child: ListTile(
-      leading: const Icon(Icons.info_outline, color: green),
-      title: const Text('عن الجمعية'),
-      trailing: const Icon(Icons.chevron_left),
-      onTap: () => go(6))),
-  ]);
+  Widget _accountPage() => const CharityAccountPage();
 
   Widget _section() {
     final descriptions = [
