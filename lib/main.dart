@@ -478,6 +478,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   List<Map<String, dynamic>> wpCategories = [];
   List<String> wpCategoryOrder = [];
   Set<String> wpHiddenCategories = {};
+  Map<String, int> wpCategoryColors = {};
+  static const _tileColors = <Color>[
+    Colors.white, Color(0xFFE0F2E9), Color(0xFFFFE9E9),
+    Color(0xFFFFF1D5), Color(0xFFE6EEFF), Color(0xFFF0E6FF),
+    Color(0xFFE0F5F5), Color(0xFFFFE6F0),
+  ];
+  Color _tileColor(Map<String, dynamic> category) => Color(wpCategoryColors[_wpKey(category)] ?? 0xFFFFFFFF);
   String _wpKey(Map<String, dynamic> c) => '${c['type']}:${c['id']}';
   List<Map<String, dynamic>> get _orderedWpCategories {
     final items = [...wpCategories]..sort((a,b) {
@@ -779,6 +786,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       _homeTileSize = ['small', 'medium', 'large'].contains(savedTileSize) ? savedTileSize : 'medium';
       wpCategoryOrder = prefs.getStringList('home_wp_category_order') ?? [];
       wpHiddenCategories = (prefs.getStringList('home_wp_category_hidden') ?? []).toSet();
+      try {
+        final raw = jsonDecode(prefs.getString('home_wp_category_colors') ?? '{}') as Map;
+        wpCategoryColors = raw.map((k,v) => MapEntry(k.toString(), (v as num).toInt()));
+      } catch (_) { wpCategoryColors = {}; }
       customCategories = custom;
       final valid = {..._defaultCategoryOrder, ...custom.keys};
       if (parsed != null && parsed.toSet().length == parsed.length &&
@@ -797,6 +808,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     await prefs.setString('home_tile_size', _homeTileSize);
     await prefs.setStringList('home_wp_category_order', wpCategoryOrder);
     await prefs.setStringList('home_wp_category_hidden', wpHiddenCategories.toList());
+    await prefs.setString('home_wp_category_colors', jsonEncode(wpCategoryColors));
     await prefs.setStringList('home_category_order',
         categoryOrder.map((id) => '$id').toList());
     await prefs.setStringList('home_category_hidden',
@@ -877,7 +889,26 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                         index:index, child:const Icon(Icons.drag_handle,color:green)),
                       title: Text(item['name'] as String),
                       subtitle: Text(item['type']=='product_cat'?'تصنيف منتجات':'تصنيف مقالات'),
-                      trailing: Switch(
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        PopupMenuButton<int>(
+                          tooltip: 'لون المربع',
+                          icon: Icon(Icons.palette, color: Color(wpCategoryColors[key] ?? 0xFF006633)),
+                          onSelected: (value) {
+                            refreshSheet(() => wpCategoryColors[key] = value);
+                            setState(() {});
+                            _saveCategorySettings();
+                          },
+                          itemBuilder: (_) => [
+                            for (final color in _tileColors)
+                              PopupMenuItem<int>(value: color.toARGB32(), child: Row(children: [
+                                Container(width: 24, height: 24, decoration: BoxDecoration(
+                                  color: color, border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(5))),
+                                const SizedBox(width: 10),
+                                Text(color == Colors.white ? 'أبيض' : 'اختيار اللون'),
+                              ])),
+                          ],
+                        ),
+                        Switch(
                         value: !wpHiddenCategories.contains(key),
                         onChanged: (visible) {
                           refreshSheet(() {
@@ -888,6 +919,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                           _saveCategorySettings();
                         },
                       ),
+                      ]),
                     );
                   },
                 )),
@@ -897,6 +929,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                     wpCategoryOrder=[];
                     wpHiddenCategories.clear();
                     _homeTileSize='medium';
+                    wpCategoryColors.clear();
                   });
                   setState(() {});
                   _saveCategorySettings();
@@ -1047,7 +1080,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         children: [
           for (final category in _orderedWpCategories)
             Material(
-              color: Colors.white,
+              color: _tileColor(category),
               borderRadius: BorderRadius.circular(14),
               child: InkWell(
                 borderRadius: BorderRadius.circular(14),
