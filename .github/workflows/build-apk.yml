@@ -58,6 +58,13 @@ jobs:
           flutter create --platforms=android \
             --org com.altaawuncharity .
 
+      - name: Install Android notification sound resources
+        run: |
+          mkdir -p android/app/src/main/res/raw
+          for tone in urgent news soft; do
+            cp "assets/tones/${tone}.wav" "android/app/src/main/res/raw/altaawun_${tone}.wav"
+          done
+
       - name: Configure Arabic app name
         run: bash tool/configure_app_name.sh && bash tool/configure_firebase.sh
 
