@@ -390,6 +390,7 @@ class CharityShell extends StatefulWidget {
 
 class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver {
   int? _cartCount;
+  int _cartRefreshKey = 0;
   String? _fcmToken;
   String _notificationTone = 'urgent';
   bool _notificationVibration = true;
@@ -1045,7 +1046,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     );
   }
 
-  void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; });
+  void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
 
   void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; });
   @override
@@ -1119,9 +1120,25 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           ),
       ])),
     ]))),
-    body: IndexedStack(index: checkoutUrl == null ? 0 : 1, children: [
+    body: Stack(children: [
+      IndexedStack(index: checkoutUrl == null ? 0 : 1, children: [
       selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
       _inAppCheckout(),
+      ]),
+      // Separate same-origin cart reader: initialise the badge when the app starts,
+      // even if the customer has not opened the visible WooCommerce checkout.
+      Offstage(
+        offstage: true,
+        child: SizedBox(width: 1, height: 1,
+          child: _CheckoutContent(
+            key: ValueKey('cart-reader-$_cartRefreshKey'),
+            url: 'https://www.aytamaliraq.com/cart/',
+            onCartCount: (count) {
+              if (mounted && _cartCount != count) setState(() => _cartCount = count);
+            },
+          ),
+        ),
+      ),
     ]),
     bottomNavigationBar: NavigationBar(
       height: 72,
