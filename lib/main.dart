@@ -573,7 +573,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         (uri.host == 'aytamaliraq.com' || uri.host == 'www.aytamaliraq.com');
     return ListView(padding: const EdgeInsets.all(16), children: [
       TextButton.icon(onPressed: () => setState(() => selectedItem = null),
-        icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التصنيف')),
+        icon: const Icon(Icons.arrow_forward), label: Text(page == 4 && wpSelectedCategory == null ? 'العودة إلى الأخبار' : 'العودة إلى التصنيف')),
       if (image.isNotEmpty) ClipRRect(borderRadius: BorderRadius.circular(14),
         child: Image.network(image, height: 240, fit: BoxFit.contain,
           errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 60))),
@@ -1224,14 +1224,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           clipBehavior: Clip.antiAlias,
           margin: const EdgeInsets.only(bottom: 12),
           child: InkWell(
-            onTap: () {
-              final link = (post['link'] ?? '').toString();
-              final uri = Uri.tryParse(link);
-              if (uri != null && uri.scheme == 'https' &&
-                  (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => DonationWebScreen(url: link)));
-              }
-            },
+            onTap: () => setState(() {
+              wpSelectedType = 'category';
+              wpSelectedCategory = null;
+              checkoutUrl = null;
+              selectedItem = Map<String, dynamic>.from(post);
+            }),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               if (_postImage(post).isNotEmpty) Image.network(_postImage(post), height: 170, fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink()),
