@@ -190,6 +190,13 @@ class _CheckoutContentState extends State<_CheckoutContent> {
       ..loadRequest(Uri.parse(widget.url));
   }
   @override
+  void didUpdateWidget(covariant _CheckoutContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      controller.loadRequest(Uri.parse(widget.url));
+    }
+  }
+  @override
   Widget build(BuildContext context) => WebViewWidget(controller: controller);
 }
 
@@ -600,7 +607,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
       icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
-    Expanded(child: _CheckoutContent(key: ValueKey(checkoutUrl), url: checkoutUrl!)),
+    Expanded(child: _CheckoutContent(url: checkoutUrl!)),
   ]);
 
   String _postImage(dynamic post) {
