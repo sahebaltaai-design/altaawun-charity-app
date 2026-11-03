@@ -19,11 +19,18 @@ Future<void> main() async {
 
 const _notificationChannelPrefix = 'altaawun_tone_v2_';
 final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+final ValueNotifier<String?> notificationTapUrl = ValueNotifier<String?>(null);
 
 Future<void> _initializeNotificationChannels() async {
   await _localNotifications.initialize(const InitializationSettings(
     android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-  ));
+  ), onDidReceiveNotificationResponse: (response) {
+    notificationTapUrl.value = response.payload;
+  });
+  final launch = await _localNotifications.getNotificationAppLaunchDetails();
+  if (launch?.didNotificationLaunchApp == true) {
+    notificationTapUrl.value = launch?.notificationResponse?.payload;
+  }
   final android = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
   for (final tone in const ['urgent', 'news', 'soft', 'default']) {
     for (final vibration in [true, false]) {
@@ -470,6 +477,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         sound: tone == 'default' ? null : RawResourceAndroidNotificationSound('altaawun_' + tone),
         enableVibration: _notificationVibration,
       )),
+      payload: (message.data['url'] ?? message.data['link'] ?? '').toString(),
     );
   }
 
@@ -617,7 +625,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   }
 
   void _openNotificationNews(RemoteMessage message) {
-    final url = (message.data['url'] ?? '').toString();
+    final url = (message.data['url'] ?? message.data['link'] ?? '').toString();
+    _openNotificationUrl(url);
+  }
+
+  void _openNotificationUrl(String url) {
     if (!_validNewsUrl(url) || !mounted) return;
     setState(() {
       checkoutUrl = url;
@@ -625,6 +637,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       wpSelectedCategory = null;
       page = 4;
     });
+  }
+
+  void _onLocalNotificationTap() {
+    final url = notificationTapUrl.value;
+    if (url == null || url.isEmpty) return;
+    notificationTapUrl.value = null;
+    _openNotificationUrl(url);
   }
 
   Future<void> _setupPush() async {
@@ -949,6 +968,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     _loadCategorySettings();
     _loadNotificationPreferences();
     _setupPush();
+    notificationTapUrl.addListener(_onLocalNotificationTap);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onLocalNotificationTap());
     WidgetsBinding.instance.addObserver(this);
     _loadCachedWordPressCategories();
   }
