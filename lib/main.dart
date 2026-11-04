@@ -839,7 +839,16 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         if (isDonation) setState(() => checkoutUrl = url);
       })),
       if (isProduct) FilledButton.icon(
-        onPressed: valid ? () => setState(() => checkoutUrl = link) : null,
+        onPressed: valid ? () {
+          final productId = int.tryParse((item['id'] ?? '').toString());
+          final productType = (item['type'] ?? 'simple').toString();
+          // Simple sponsorships go directly to the cart, not to a full
+          // WordPress product page containing unrelated links and products.
+          final target = productId != null && productId > 0 && productType == 'simple'
+              ? 'https://www.aytamaliraq.com/cart/?add-to-cart=$productId'
+              : link;
+          setState(() => checkoutUrl = target);
+        } : null,
         icon: const Icon(Icons.shopping_cart_outlined), label: const Text('اختيار الكفالة وإضافتها للسلة')),
     ]);
   }
