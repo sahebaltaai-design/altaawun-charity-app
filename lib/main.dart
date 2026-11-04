@@ -493,7 +493,7 @@ class _Emblem extends StatelessWidget {
     width: size,
     height: size,
     child: Image.asset(
-      'assets/welcome_background-2.png',
+      'assets/charity_logo.png',
       fit: BoxFit.contain,
       errorBuilder: (_, __, ___) =>
           Icon(Icons.volunteer_activism, size: size * .7, color: red),
