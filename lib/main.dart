@@ -253,7 +253,7 @@ class _CheckoutContentState extends State<_CheckoutContent> {
         if (count != null && count >= 0 && mounted) widget.onCartCount(count);
       })
       ..setNavigationDelegate(NavigationDelegate(
-        onNavigationRequest: (request) {
+        onNavigationRequest: (request) async {
           final uri = Uri.tryParse(request.url);
           if (uri == null || uri.scheme != 'https') return NavigationDecision.prevent;
           if (!request.isMainFrame) return NavigationDecision.navigate;
