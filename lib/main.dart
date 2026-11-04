@@ -255,7 +255,30 @@ class _CheckoutContentState extends State<_CheckoutContent> {
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (request) {
           final uri = Uri.tryParse(request.url);
-          return uri != null && uri.scheme == 'https'
+          if (uri == null || uri.scheme != 'https') return NavigationDecision.prevent;
+          if (!request.isMainFrame) return NavigationDecision.navigate;
+          final initial = Uri.tryParse(widget.url);
+          if (initial == null) return NavigationDecision.prevent;
+          final host = uri.host.toLowerCase();
+          final sameSite = host == 'aytamaliraq.com' || host == 'www.aytamaliraq.com';
+          if (!sameSite) {
+            // External payment providers may be needed after the user begins checkout.
+            final current = await controller.currentUrl();
+            final currentPath = Uri.tryParse(current ?? '')?.path.toLowerCase() ?? '';
+            return currentPath.contains('/checkout') || currentPath.contains('/order-pay')
+                ? NavigationDecision.navigate : NavigationDecision.prevent;
+          }
+          final path = uri.path.toLowerCase();
+          final originalPath = initial.path.toLowerCase();
+          final isOriginal = path == originalPath;
+          final isCheckout = path.contains('/checkout') || path.contains('/cart') ||
+              path.contains('/order-pay') || path.contains('/order-received') ||
+              path.contains('/my-account') || path.contains('/wc-api/');
+          final isAction = uri.queryParameters.containsKey('add-to-cart') ||
+              uri.queryParameters.containsKey('wc-ajax') ||
+              uri.queryParameters.containsKey('remove_item') ||
+              uri.queryParameters.containsKey('undo_item');
+          return isOriginal || isCheckout || isAction
               ? NavigationDecision.navigate : NavigationDecision.prevent;
         },
         onPageFinished: (url) {
@@ -810,7 +833,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         final uri = Uri.tryParse(url);
         if (uri == null || uri.scheme != 'https') return;
         if (uri.host != 'aytamaliraq.com' && uri.host != 'www.aytamaliraq.com') return;
-        setState(() => checkoutUrl = url);
+        final path = uri.path.toLowerCase();
+        final isDonation = path.contains('/checkout') || path.contains('/cart') ||
+            path.contains('/order-pay') || uri.queryParameters.containsKey('add-to-cart');
+        if (isDonation) setState(() => checkoutUrl = url);
       })),
       if (isProduct) FilledButton.icon(
         onPressed: valid ? () => setState(() => checkoutUrl = link) : null,
