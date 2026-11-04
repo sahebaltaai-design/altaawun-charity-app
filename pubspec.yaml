@@ -28,5 +28,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/welcome_background-2.png
+    - assets/png_style_emblem_the_same_arabic_logo_arched_em.png
     - assets/home_hero.jpg
     - assets/tones/
