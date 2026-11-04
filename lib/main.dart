@@ -2,6 +2,7 @@ import 'charity_about_content.dart';
 import 'charity_account_page.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -506,6 +507,83 @@ class CharityShell extends StatefulWidget {
 }
 
 class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver {
+  List<Map<String, dynamic>> _appSlides = [];
+  int _slideIndex = 0;
+  int _slideSeconds = 5;
+  bool _slideAutoplay = true;
+  Timer? _slideTimer;
+
+  Future<void> _loadAppSlides() async {
+    try {
+      final response = await http.get(Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun/v1/slides')).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) return;
+      final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final slides = (data['slides'] as List? ?? []).whereType<Map<String, dynamic>>().where((e) => (e['image'] ?? '').toString().startsWith('https://')).toList();
+      if (!mounted) return;
+      setState(() {
+        _appSlides = slides;
+        _slideIndex = 0;
+        _slideSeconds = ((data['interval'] as num?)?.toInt() ?? 5).clamp(2, 30);
+        _slideAutoplay = data['autoplay'] != false;
+      });
+      _restartSlideTimer();
+    } catch (_) { /* Retain the existing offline banner. */ }
+  }
+
+  void _restartSlideTimer() {
+    _slideTimer?.cancel();
+    if (_appSlides.length < 2 || !_slideAutoplay) return;
+    _slideTimer = Timer.periodic(Duration(seconds: _slideSeconds), (_) {
+      if (mounted && page == 0) setState(() => _slideIndex = (_slideIndex + 1) % _appSlides.length);
+    });
+  }
+
+  void _advanceSlide(int direction) {
+    if (_appSlides.isEmpty) return;
+    setState(() => _slideIndex = (_slideIndex + direction + _appSlides.length) % _appSlides.length);
+    _restartSlideTimer();
+  }
+
+  Widget _remoteSlider() {
+    final slide = _appSlides[_slideIndex];
+    final url = (slide['url'] ?? '').toString();
+    return Column(children: [
+      SizedBox(height: 240, child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(fit: StackFit.expand, children: [
+          Image.network(slide['image'].toString(), fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFFE7F2EA))),
+          const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+            begin: Alignment.centerLeft, end: Alignment.centerRight,
+            colors: [Colors.transparent, Color(0xD9004C29)]))),
+          Positioned(right: 20, top: 24, left: 80, child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text((slide['title'] ?? '').toString(), maxLines: 2,
+                style: const TextStyle(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w900)),
+              Text((slide['subtitle'] ?? '').toString(), maxLines: 2,
+                style: const TextStyle(color: Colors.white, fontSize: 16)),
+            ])),
+          if (url.startsWith('https://')) Positioned(right: 18, bottom: 16,
+            child: FilledButton(onPressed: () => _openNotificationUrl(url),
+              child: Text((slide['button'] ?? 'المزيد').toString()))),
+          if (_appSlides.length > 1) ...[
+            Positioned(left: 4, top: 85, child: IconButton.filledTonal(
+              onPressed: () => _advanceSlide(-1), icon: const Icon(Icons.chevron_left))),
+            Positioned(right: 4, top: 85, child: IconButton.filledTonal(
+              onPressed: () => _advanceSlide(1), icon: const Icon(Icons.chevron_right))),
+          ],
+        ]),
+      )),
+      if (_appSlides.length > 1) Padding(padding: const EdgeInsets.only(top: 8),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          for (var i = 0; i < _appSlides.length; i++)
+            Container(margin: const EdgeInsets.symmetric(horizontal: 3), width: i == _slideIndex ? 20 : 7,
+              height: 7, decoration: BoxDecoration(color: i == _slideIndex ? green : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(8))),
+        ])),
+    ]);
+  }
+
   int? _cartCount;
   int _cartRefreshKey = 0;
   String? _fcmToken;
@@ -1028,6 +1106,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   @override
   void initState() {
     super.initState();
+    _loadAppSlides();
     _loadCategorySettings();
     _loadNotificationPreferences();
     _setupPush();
@@ -1411,7 +1490,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   );
 
   Widget _home() => ListView(padding: EdgeInsets.zero, children: [
-    SizedBox(height: 260, child: Stack(fit: StackFit.expand, children: [
+    if (_appSlides.isNotEmpty) _remoteSlider() else     SizedBox(height: 260, child: Stack(fit: StackFit.expand, children: [
       Image.asset(
         'assets/home_hero.jpg',
         fit: BoxFit.cover,
