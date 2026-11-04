@@ -1359,14 +1359,14 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      toolbarHeight: 86,
+      toolbarHeight: page == 0 ? 128 : 86,
       backgroundColor: Colors.white,
       foregroundColor: deepGreen,
       leading: Builder(builder: (context) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(context).openDrawer())),
       title: page == 0 ? const Column(mainAxisSize: MainAxisSize.min, children: [
-        _Emblem(size: 38),
-        Text('جمعية التعاون الخيرية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-        Text('مدرسة الأيتام وكفالتهم', style: TextStyle(fontSize: 10)),
+        _Emblem(size: 58),
+        Text('جمعية التعاون الخيرية', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+        Text('مدرسة الأيتام وكفالتهم', style: TextStyle(fontSize: 12)),
       ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       actions: [IconButton(
         tooltip: 'سلة الكفالات والتبرعات',
@@ -1491,8 +1491,18 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     ],
   );
 
+  IconData _categoryIcon(String name) {
+    if (RegExp(r'كفال|يتيم|أيتام|ايتام').hasMatch(name)) return Icons.volunteer_activism_outlined;
+    if (RegExp(r'مناشد|إنسان').hasMatch(name)) return Icons.favorite_border;
+    if (RegExp(r'غذائ|سلة').hasMatch(name)) return Icons.shopping_basket_outlined;
+    if (RegExp(r'مدرس|طالب|تعليم').hasMatch(name)) return Icons.school_outlined;
+    if (RegExp(r'تبرع|صدقات').hasMatch(name)) return Icons.favorite_outline;
+    return Icons.folder_open;
+  }
+
   Widget _home() => ListView(padding: EdgeInsets.zero, children: [
-    if (_appSlides.isNotEmpty) _remoteSlider() else     SizedBox(height: 260, child: Stack(fit: StackFit.expand, children: [
+    const SizedBox(height: 12),
+    if (_appSlides.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: _remoteSlider()) else Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: ClipRRect(borderRadius: BorderRadius.circular(18), child: SizedBox(height: 240, child: Stack(fit: StackFit.expand, children: [
       Image.asset(
         'assets/home_hero.jpg',
         fit: BoxFit.cover,
@@ -1514,7 +1524,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         icon: const Icon(Icons.favorite_border), label: const Text('كفالة يتيم',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
       )),
-    ])),
+    ])))),
     Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -1524,7 +1534,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         children: [
           for (final category in _orderedWpCategories)
             Material(
-              color: _tileColor(category),
+              color: wpCategoryColors.containsKey(_wpKey(category)) ? _tileColor(category) : const [Color(0xFFE3F5E9), Color(0xFFFFEDD8), Color(0xFFF0E4FF), Color(0xFFE1EDFF), Color(0xFFFFE3EC), Color(0xFFE7F6EF)][_orderedWpCategories.indexOf(category) % 6],
               borderRadius: BorderRadius.circular(14),
               child: InkWell(
                 borderRadius: BorderRadius.circular(14),
@@ -1532,7 +1542,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                     category['id'] as int, category['name'] as String,
                     category['type'] as String),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.folder_open, size: _homeTileSize == 'small' ? 28 : 36, color: green),
+                  Icon(_categoryIcon(category['name'].toString()), size: _homeTileSize == 'small' ? 28 : 36, color: green),
                   const SizedBox(height: 7),
                   Flexible(child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
