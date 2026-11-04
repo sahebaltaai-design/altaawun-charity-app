@@ -170,12 +170,12 @@ jobs:
           root = Path('android')
           (root / 'upload-keystore.jks').write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64']))
           props = root / 'key.properties'
-          props.write_text('storeFile=../upload-keystore.jks\\nstorePassword=' + os.environ['KEYSTORE_PASSWORD'] + '\\nkeyAlias=' + os.environ['KEY_ALIAS'] + '\\nkeyPassword=' + os.environ['KEY_PASSWORD'] + '\\n')
+          props.write_text('storeFile=upload-keystore.jks\nstorePassword=' + os.environ['KEYSTORE_PASSWORD'] + '\nkeyAlias=' + os.environ['KEY_ALIAS'] + '\nkeyPassword=' + os.environ['KEY_PASSWORD'] + '\n')
           gradle = root / 'app/build.gradle.kts'
           if gradle.exists():
               s = gradle.read_text()
-              s = 'import java.util.Properties\\nimport java.io.FileInputStream\\n' + s
-              s = s.replace('android {', 'val uploadProps = Properties().apply { load(FileInputStream(rootProject.file("key.properties"))) }\\n\\nandroid {', 1)
+              s = 'import java.util.Properties\nimport java.io.FileInputStream\n' + s
+              s = s.replace('android {', 'val uploadProps = Properties().apply { load(FileInputStream(rootProject.file("key.properties"))) }\n\nandroid {', 1)
               s = s.replace('    buildTypes {', '''    signingConfigs {
                   create("uploadRelease") {
                       keyAlias = uploadProps["keyAlias"] as String
