@@ -1142,6 +1142,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   @override
   void dispose() {
+    _slideTimer?.cancel();
+    notificationTapUrl.removeListener(_onLocalNotificationTap);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
