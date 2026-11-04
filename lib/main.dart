@@ -1529,31 +1529,41 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: _homeTileSize == 'small' ? 4 : (_homeTileSize == 'large' ? 2 : 3),
-        mainAxisSpacing: 9, crossAxisSpacing: 9,
-        mainAxisExtent: _homeTileSize == 'small' ? 124 : (_homeTileSize == 'large' ? 174 : 148),
+        crossAxisCount: 2,
+        mainAxisSpacing: 10, crossAxisSpacing: 10,
+        mainAxisExtent: 128,
         children: [
           for (final category in _orderedWpCategories)
             Material(
-              color: wpCategoryColors.containsKey(_wpKey(category)) ? _tileColor(category) : const [Color(0xFFE3F5E9), Color(0xFFFFEDD8), Color(0xFFF0E4FF), Color(0xFFE1EDFF), Color(0xFFFFE3EC), Color(0xFFE7F6EF)][_orderedWpCategories.indexOf(category) % 6],
-              borderRadius: BorderRadius.circular(14),
+              color: wpCategoryColors.containsKey(_wpKey(category))
+                  ? _tileColor(category)
+                  : const [
+                      Color(0xFF278464), Color(0xFF397EAC),
+                      Color(0xFFB28B42), Color(0xFF8470B0),
+                      Color(0xFF228B97), Color(0xFF627D9A),
+                    ][_orderedWpCategories.indexOf(category) % 6],
+              borderRadius: BorderRadius.circular(13),
+              clipBehavior: Clip.antiAlias,
               child: InkWell(
-                borderRadius: BorderRadius.circular(14),
                 onTap: () => _openWordPressCategory(
                     category['id'] as int, category['name'] as String,
                     category['type'] as String),
-                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(_categoryIcon(category['name'].toString()), size: _homeTileSize == 'small' ? 28 : 36, color: green),
-                  const SizedBox(height: 7),
-                  Flexible(child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Text(category['name'] as String,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(_categoryIcon(category['name'].toString()),
+                        size: 32, color: Colors.white),
+                    const SizedBox(height: 8),
+                    Flexible(child: Text(category['name'] as String,
                       textAlign: TextAlign.center,
-                      maxLines: 3,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: _homeTileSize == 'small' ? 11 : 13, fontWeight: FontWeight.bold, color: Color(wpCategoryTextColors[_wpKey(category)] ?? 0xFF111111)))),
-                  ),
-                ]),
+                      style: const TextStyle(fontSize: 14,
+                        fontWeight: FontWeight.w700, color: Colors.white))),
+                    const SizedBox(height: 5),
+                    const Icon(Icons.arrow_forward, size: 18, color: Colors.white),
+                  ]),
+                ),
               ),
             ),
         ],
