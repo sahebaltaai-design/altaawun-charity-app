@@ -94,9 +94,9 @@ jobs:
           from pathlib import Path
           from PIL import Image
           import xml.etree.ElementTree as ET
-          src = Path('assets/altaawun-charity-icon-final.png')
+          src = Path('assets/png_style_emblem_the_same_arabic_logo_arched_em.png')
           if not src.is_file():
-              raise SystemExit('Missing uploaded charity icon: assets/altaawun-charity-icon-final.png')
+              raise SystemExit('Missing uploaded charity icon: assets/png_style_emblem_the_same_arabic_logo_arched_em.png')
           im = Image.open(src).convert('RGBA')
           # The uploaded image contains wide black margins around the emblem.
           # Crop the visible non-black artwork before scaling it.
