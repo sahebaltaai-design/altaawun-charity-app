@@ -285,11 +285,32 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           final uri = Uri.tryParse(url);
           if (uri != null && (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
             controller.runJavaScript(_cartWatcherScript);
+            controller.runJavaScript(_appCheckoutDisplayScript);
           }
         },
       ))
       ..loadRequest(Uri.parse(widget.url));
   }
+  // Remove unrelated site chrome only while the embedded cart/checkout is open.
+  // Keep WooCommerce forms, payment gateways, and order details untouched.
+  static const _appCheckoutDisplayScript = r'''(function(){
+    var path = location.pathname.toLowerCase();
+    if (!(/\\/cart\\/?|\\/checkout\\/?|\\/order-pay\\/?/.test(path))) return;
+    if (document.getElementById('altaawun-app-checkout-style')) return;
+    var style = document.createElement('style');
+    style.id = 'altaawun-app-checkout-style';
+    style.textContent = [
+      'header.site-header, #masthead, .site-header, .elementor-location-header,',
+      'footer.site-footer, #colophon, .site-footer, .elementor-location-footer,',
+      '.site-info, .footer-widgets, .ast-footer-wrap, .site-below-footer-wrap,',
+      '.sidebar, #secondary, .widget-area, .related.products, .up-sells,',
+      '.woocommerce-breadcrumb, .scroll-to-top, .back-to-top {display:none!important;}',
+      'body {overflow-x:hidden!important;}',
+      '.site-content, .content-area, main, .woocommerce {max-width:100%!important;}'
+    ].join(' ');
+    document.head.appendChild(style);
+  })();''';
+
   static const _cartWatcherScript = r'''(function(){
   if(window.__altaawunCartInstalled) return;
   window.__altaawunCartInstalled = true;
@@ -856,7 +877,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
       icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
-    Expanded(child: _CheckoutContent(url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', onCartCount: (count) {
+    Expanded(child: _CheckoutContent(key: ValueKey(checkoutUrl), url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', onCartCount: (count) {
       if (mounted && _cartCount != count) setState(() => _cartCount = count);
     })),
   ]);
