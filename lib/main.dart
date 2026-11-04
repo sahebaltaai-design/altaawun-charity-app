@@ -371,10 +371,14 @@ class SplashScreen extends StatelessWidget {
     body: LayoutBuilder(builder: (context, constraints) => Stack(
       fit: StackFit.expand,
       children: [
+        const ColoredBox(color: deepGreen),
+        // Preserve the full artwork and logo without stretching or cropping
+        // on phones with different aspect ratios.
         Image.asset(
           'assets/welcome_background-2.png',
-          fit: BoxFit.fill,
-          errorBuilder: (_, __, ___) => const ColoredBox(color: deepGreen),
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
         ),
         Positioned(
           left: 16,
