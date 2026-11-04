@@ -489,14 +489,15 @@ class _Emblem extends StatelessWidget {
   final double size;
   const _Emblem({this.size = 48});
   @override
-  Widget build(BuildContext context) => Container(
-    width: size, height: size,
-    decoration: BoxDecoration(
-      color: Colors.white, borderRadius: BorderRadius.circular(size * .24),
-      border: Border.all(color: green, width: 2),
-      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .12), blurRadius: 12)],
+  Widget build(BuildContext context) => SizedBox(
+    width: size,
+    height: size,
+    child: Image.asset(
+      'assets/welcome_background-2.png',
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) =>
+          Icon(Icons.volunteer_activism, size: size * .7, color: red),
     ),
-    child: ClipRRect(borderRadius: BorderRadius.circular(size * .22), child: Image.asset('assets/welcome_background-2.png', fit: BoxFit.cover, alignment: const Alignment(0, -.82), errorBuilder: (_, __, ___) => Icon(Icons.volunteer_activism, size: size * .67, color: red))),
   );
 }
 
