@@ -151,6 +151,62 @@ jobs:
           clean.save(p, 'PNG', optimize=True)
           PY
 
+      - name: Configure release signing for Play Store
+        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, base64
+          root = Path('android')
+          (root / 'upload-keystore.jks').write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64']))
+          props = root / 'key.properties'
+          props.write_text('storeFile=../upload-keystore.jks\\nstorePassword=' + os.environ['KEYSTORE_PASSWORD'] + '\\nkeyAlias=' + os.environ['KEY_ALIAS'] + '\\nkeyPassword=' + os.environ['KEY_PASSWORD'] + '\\n')
+          gradle = root / 'app/build.gradle.kts'
+          if gradle.exists():
+              s = gradle.read_text()
+              s = 'import java.util.Properties\\nimport java.io.FileInputStream\\n' + s
+              s = s.replace('android {', 'val uploadProps = Properties().apply { load(FileInputStream(rootProject.file("key.properties"))) }\\n\\nandroid {', 1)
+              s = s.replace('    buildTypes {', '''    signingConfigs {
+                  create("uploadRelease") {
+                      keyAlias = uploadProps["keyAlias"] as String
+                      keyPassword = uploadProps["keyPassword"] as String
+                      storeFile = rootProject.file(uploadProps["storeFile"] as String)
+                      storePassword = uploadProps["storePassword"] as String
+                  }
+              }
+              buildTypes {''', 1)
+              s = s.replace('signingConfig = signingConfigs.getByName("debug")', 'signingConfig = signingConfigs.getByName("uploadRelease")')
+              gradle.write_text(s)
+          else:
+              raise SystemExit('Expected Flutter Kotlin Gradle build file not found')
+          PY
+
+      - name: Build signed Play Store AAB
+        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build appbundle --release --build-number=${{ github.run_number }}
+
+      - name: Upload signed Play Store AAB
+        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-charity-play-store-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+
       - name: Build APK
         run: flutter build apk --debug --build-number=${{ github.run_number }}
 
