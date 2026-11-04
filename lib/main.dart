@@ -295,13 +295,15 @@ class _CheckoutContentState extends State<_CheckoutContent> {
   // Keep WooCommerce forms, payment gateways, and order details untouched.
   static const _appCheckoutDisplayScript = r'''(function(){
     var path = location.pathname.toLowerCase();
-    if (!(/\\/cart\\/?|\\/checkout\\/?|\\/order-pay\\/?/.test(path))) return;
+    if (!(path.includes('/cart') || path.includes('/checkout') || path.includes('/order-pay'))) return;
     if (document.getElementById('altaawun-app-checkout-style')) return;
     var style = document.createElement('style');
     style.id = 'altaawun-app-checkout-style';
     style.textContent = [
       'header.site-header, #masthead, .site-header, .elementor-location-header,',
-      'footer.site-footer, #colophon, .site-footer, .elementor-location-footer,',
+      'footer, footer.site-footer, #colophon, .site-footer, .elementor-location-footer,',
+      '#footer, .footer, .footer-area, .footer-main, .footer-bottom, .site-footer-wrap,',
+      '.elementor-widget-social-icons, .social-icons, .footer-social,',
       '.site-info, .footer-widgets, .ast-footer-wrap, .site-below-footer-wrap,',
       '.sidebar, #secondary, .widget-area, .related.products, .up-sells,',
       '.woocommerce-breadcrumb, .scroll-to-top, .back-to-top {display:none!important;}',
