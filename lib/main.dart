@@ -1,3 +1,4 @@
+import 'package:upgrader/upgrader.dart';
 import 'charity_about_content.dart';
 import 'charity_account_page.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -107,7 +108,15 @@ class _AltaawunAppState extends State<AltaawunApp> {
               child: child ?? const SizedBox(),
             ),
           ),
-          home: const SplashScreen(),
+          home: UpgradeAlert(
+            upgrader: Upgrader(
+              languageCode: 'ar',
+              durationUntilAlertAgain: const Duration(days: 1),
+            ),
+            showIgnore: false,
+            showLater: true,
+            child: const SplashScreen(),
+          ),
         );
       },
     ),
