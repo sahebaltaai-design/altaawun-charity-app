@@ -96,7 +96,7 @@ class _AltaawunAppState extends State<AltaawunApp> {
           theme: ThemeData(
             useMaterial3: true,
             textTheme: textTheme,
-            scaffoldBackgroundColor: ivory,
+            scaffoldBackgroundColor: Colors.white,
             colorScheme: ColorScheme.fromSeed(seedColor: green),
             appBarTheme: const AppBarTheme(backgroundColor: green, foregroundColor: Colors.white, centerTitle: true),
           ),
@@ -1558,6 +1558,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ),
     ]),
     bottomNavigationBar: NavigationBar(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
       height: 72,
       selectedIndex: [0, 1, 4, 3, 7].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 7].indexOf(page),
       onDestinationSelected: (index) => go([0, 1, 4, 3, 7][index]),
