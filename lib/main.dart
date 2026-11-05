@@ -1221,6 +1221,60 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     setState(() { customPage = id; page = 0; });
   }
 
+  Future<Color?> _pickCustomColor(Color initial, String title) async {
+    HSVColor selected = HSVColor.fromColor(initial);
+    return showDialog<Color>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refresh) => AlertDialog(
+          title: Text(title),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                height: 64,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: selected.toColor(),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('درجة اللون'),
+              Slider(
+                value: selected.hue,
+                min: 0, max: 360,
+                onChanged: (value) => refresh(() => selected = selected.withHue(value)),
+              ),
+              const Text('قوة اللون'),
+              Slider(
+                value: selected.saturation,
+                min: 0, max: 1,
+                onChanged: (value) => refresh(() => selected = selected.withSaturation(value)),
+              ),
+              const Text('الإضاءة'),
+              Slider(
+                value: selected.value,
+                min: 0, max: 1,
+                onChanged: (value) => refresh(() => selected = selected.withValue(value)),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, selected.toColor()),
+              child: const Text('حفظ اللون'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _manageCategories() {
     showModalBottomSheet<void>(
       context: context, isScrollControlled: true, showDragHandle: true,
@@ -1278,41 +1332,33 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                       title: Text(item['name'] as String),
                       subtitle: Text(item['type']=='product_cat'?'تصنيف منتجات':'تصنيف مقالات'),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        PopupMenuButton<int>(
-                          tooltip: 'لون المربع',
+                        IconButton(
+                          tooltip: 'اختيار لون المربع',
                           icon: Icon(Icons.palette, color: Color(wpCategoryColors[key] ?? 0xFF006633)),
-                          onSelected: (value) {
-                            refreshSheet(() => wpCategoryColors[key] = value);
+                          onPressed: () async {
+                            final chosen = await _pickCustomColor(
+                              Color(wpCategoryColors[key] ?? 0xFFE3F5E9),
+                              'لون خلفية المربع',
+                            );
+                            if (chosen == null || !mounted) return;
+                            refreshSheet(() => wpCategoryColors[key] = chosen.toARGB32());
                             setState(() {});
-                            _saveCategorySettings();
+                            await _saveCategorySettings();
                           },
-                          itemBuilder: (_) => [
-                            for (final color in _tileColors)
-                              PopupMenuItem<int>(value: color.toARGB32(), child: Row(children: [
-                                Container(width: 24, height: 24, decoration: BoxDecoration(
-                                  color: color, border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(5))),
-                                const SizedBox(width: 10),
-                                Text(color == Colors.white ? 'أبيض' : 'اختيار اللون'),
-                              ])),
-                          ],
                         ),
-                        PopupMenuButton<int>(
-                          tooltip: 'لون الكتابة',
+                        IconButton(
+                          tooltip: 'اختيار لون الكتابة',
                           icon: Icon(Icons.format_color_text, color: Color(wpCategoryTextColors[key] ?? 0xFF111111)),
-                          onSelected: (value) {
-                            refreshSheet(() => wpCategoryTextColors[key] = value);
+                          onPressed: () async {
+                            final chosen = await _pickCustomColor(
+                              Color(wpCategoryTextColors[key] ?? 0xFF111111),
+                              'لون كتابة المربع',
+                            );
+                            if (chosen == null || !mounted) return;
+                            refreshSheet(() => wpCategoryTextColors[key] = chosen.toARGB32());
                             setState(() {});
-                            _saveCategorySettings();
+                            await _saveCategorySettings();
                           },
-                          itemBuilder: (_) => [
-                            for (final color in _textColors)
-                              PopupMenuItem<int>(value: color.toARGB32(), child: Row(children: [
-                                Container(width: 24, height: 24, decoration: BoxDecoration(
-                                  color: color, border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(5))),
-                                const SizedBox(width: 10),
-                                const Text('لون الكتابة'),
-                              ])),
-                          ],
                         ),
                         Switch(
                         value: !wpHiddenCategories.contains(key),
