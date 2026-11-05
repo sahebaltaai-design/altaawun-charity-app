@@ -835,7 +835,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Map<String, dynamic> remoteTileSettings = {};
   static const _remoteIcons = <String, IconData>{'school': Icons.school, 'groups': Icons.groups, 'favorite': Icons.favorite, 'volunteer_activism': Icons.volunteer_activism, 'article': Icons.article, 'photo_library': Icons.photo_library, 'menu_book': Icons.menu_book, 'home': Icons.home, 'campaign': Icons.campaign, 'public': Icons.public, 'local_library': Icons.local_library, 'auto_stories': Icons.auto_stories};
   Map<String, dynamic> _remoteTile(Map<String,dynamic> category) => remoteTileSettings[_wpKey(category)] is Map ? Map<String,dynamic>.from(remoteTileSettings[_wpKey(category)] as Map) : {};
-  Color? _remoteColor(dynamic raw) { if (raw is! String || !RegExp(r'^#[0-9a-fA-F]{6}
+  Color? _remoteColor(dynamic raw) { if (raw is! String || raw.length != 7 || !raw.startsWith('#')) return null; final digits=int.tryParse(raw.substring(1),radix:16); return digits == null ? null : Color(0xFF000000 | digits); }
+  double _remoteDimension(dynamic raw,double fallback,double min,double max) => raw is num ? raw.toDouble().clamp(min,max) : fallback;
+  Widget _remoteTileIcon(Map<String,dynamic> category,double defaultSize) { final tile=_remoteTile(category); final size=_remoteDimension(tile['icon_size'],defaultSize,24,100); final color=Color(wpCategoryIconColors[_wpKey(category)] ?? (_remoteColor(tile['icon_color'])?.value ?? 0xFF00642D)); final url=tile['image_url']; if (url is String && url.startsWith('https://')) return Image.network(url,width:size,height:size,fit:BoxFit.contain,errorBuilder:(_,__,___)=>Icon(_categoryIcon(category['name'].toString()),size:size,color:color)); return Icon(_remoteIcons[tile['icon']] ?? _categoryIcon(category['name'].toString()),size:size,color:color); }
+  Future<void> _loadRemoteTiles() async { try { final response=await http.get(Uri.parse('$_site/wp-json/altaawun/v1/tiles')).timeout(const Duration(seconds:12)); if(response.statusCode!=200)return; final decoded=jsonDecode(utf8.decode(response.bodyBytes)); if(decoded is! Map)return; final settings=Map<String,dynamic>.from(decoded); final prefs=await SharedPreferences.getInstance(); await prefs.setString('altaawun_remote_tiles',jsonEncode(settings)); if(mounted)setState(()=>remoteTileSettings=settings); } catch (_) {} }
+  Future<void> _restoreRemoteTiles() async { final prefs=await SharedPreferences.getInstance(); try { final cached=jsonDecode(prefs.getString('altaawun_remote_tiles') ?? '{}'); if(cached is Map && mounted)setState(()=>remoteTileSettings=Map<String,dynamic>.from(cached)); } catch (_) {} await _loadRemoteTiles(); }
+
   static const _textColors = <Color>[
     Color(0xFF111111), Color(0xFF00552F), Color(0xFF9B1C1C),
     Color(0xFF163C8C), Color(0xFF663399), Color(0xFFFFFFFF),
@@ -1950,12 +1955,6 @@ class _CategoryAddFieldState extends State<_CategoryAddField> {
     ),
   ]);
 }
-).hasMatch(raw)) return null; return Color(int.parse('FF${raw.substring(1)}',radix:16)); }
-  double _remoteDimension(dynamic raw,double fallback,double min,double max) => raw is num ? raw.toDouble().clamp(min,max) : fallback;
-  Widget _remoteTileIcon(Map<String,dynamic> category,double defaultSize) { final tile=_remoteTile(category); final size=_remoteDimension(tile['icon_size'],defaultSize,24,100); final color=Color(wpCategoryIconColors[_wpKey(category)] ?? (_remoteColor(tile['icon_color'])?.value ?? 0xFF00642D)); final url=tile['image_url']; if (url is String && url.startsWith('https://')) return Image.network(url,width:size,height:size,fit:BoxFit.contain,errorBuilder:(_,__,___)=>Icon(_categoryIcon(category['name'].toString()),size:size,color:color)); return Icon(_remoteIcons[tile['icon']] ?? _categoryIcon(category['name'].toString()),size:size,color:color); }
-  Future<void> _loadRemoteTiles() async { try { final response=await http.get(Uri.parse('$_site/wp-json/altaawun/v1/tiles')).timeout(const Duration(seconds:12)); if(response.statusCode!=200)return; final decoded=jsonDecode(utf8.decode(response.bodyBytes)); if(decoded is! Map)return; final settings=Map<String,dynamic>.from(decoded); final prefs=await SharedPreferences.getInstance(); await prefs.setString('altaawun_remote_tiles',jsonEncode(settings)); if(mounted)setState(()=>remoteTileSettings=settings); } catch (_) {} }
-  Future<void> _restoreRemoteTiles() async { final prefs=await SharedPreferences.getInstance(); try { final cached=jsonDecode(prefs.getString('altaawun_remote_tiles') ?? '{}'); if(cached is Map && mounted)setState(()=>remoteTileSettings=Map<String,dynamic>.from(cached)); } catch (_) {} await _loadRemoteTiles(); }
-
   static const _textColors = <Color>[
     Color(0xFF111111), Color(0xFF00552F), Color(0xFF9B1C1C),
     Color(0xFF163C8C), Color(0xFF663399), Color(0xFFFFFFFF),
