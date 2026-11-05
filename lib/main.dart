@@ -1529,9 +1529,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-        crossAxisCount: _homeTileSize == 'small' ? 4 : (_homeTileSize == 'large' ? 2 : 3),
+        crossAxisCount: _homeTileSize == 'small' ? 3 : (_homeTileSize == 'large' ? 1 : 2),
         mainAxisSpacing: 9, crossAxisSpacing: 9,
-        mainAxisExtent: _homeTileSize == 'small' ? 124 : (_homeTileSize == 'large' ? 174 : 148),
+        mainAxisExtent: _homeTileSize == 'small' ? 112 : (_homeTileSize == 'large' ? 190 : 160),
         children: [
           for (final category in _orderedWpCategories)
             Material(
@@ -1543,7 +1543,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                     category['id'] as int, category['name'] as String,
                     category['type'] as String),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(_categoryIcon(category['name'].toString()), size: _homeTileSize == 'small' ? 28 : 36, color: green),
+                  Icon(_categoryIcon(category['name'].toString()), size: _homeTileSize == 'small' ? 26 : (_homeTileSize == 'large' ? 46 : 36), color: green),
                   const SizedBox(height: 7),
                   Flexible(child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -1551,7 +1551,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                       textAlign: TextAlign.center,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: _homeTileSize == 'small' ? 11 : 13, fontWeight: FontWeight.bold, color: Color(wpCategoryTextColors[_wpKey(category)] ?? 0xFF111111)))),
+                      style: TextStyle(fontSize: _homeTileSize == 'small' ? 11 : (_homeTileSize == 'large' ? 18 : 14), fontWeight: FontWeight.bold, color: Color(wpCategoryTextColors[_wpKey(category)] ?? 0xFF111111)))),
                   ),
                 ]),
               ),
