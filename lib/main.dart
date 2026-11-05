@@ -831,6 +831,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Set<String> wpHiddenCategories = {};
   Map<String, int> wpCategoryColors = {};
   Map<String, int> wpCategoryTextColors = {};
+  Map<String, int> wpCategoryIconColors = {};
   static const _textColors = <Color>[
     Color(0xFF111111), Color(0xFF00552F), Color(0xFF9B1C1C),
     Color(0xFF163C8C), Color(0xFF663399), Color(0xFFFFFFFF),
@@ -1177,6 +1178,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         final raw = jsonDecode(prefs.getString('home_wp_category_text_colors') ?? '{}') as Map;
         wpCategoryTextColors = raw.map((k,v) => MapEntry(k.toString(), (v as num).toInt()));
       } catch (_) { wpCategoryTextColors = {}; }
+      try {
+        final raw = jsonDecode(prefs.getString('home_wp_category_icon_colors') ?? '{}') as Map;
+        wpCategoryIconColors = raw.map((k,v) => MapEntry(k.toString(), (v as num).toInt()));
+      } catch (_) { wpCategoryIconColors = {}; }
       customCategories = custom;
       final valid = {..._defaultCategoryOrder, ...custom.keys};
       if (parsed != null && parsed.toSet().length == parsed.length &&
@@ -1197,6 +1202,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     await prefs.setStringList('home_wp_category_hidden', wpHiddenCategories.toList());
     await prefs.setString('home_wp_category_colors', jsonEncode(wpCategoryColors));
     await prefs.setString('home_wp_category_text_colors', jsonEncode(wpCategoryTextColors));
+    await prefs.setString('home_wp_category_icon_colors', jsonEncode(wpCategoryIconColors));
     await prefs.setStringList('home_category_order',
         categoryOrder.map((id) => '$id').toList());
     await prefs.setStringList('home_category_hidden',
@@ -1360,6 +1366,20 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                             await _saveCategorySettings();
                           },
                         ),
+                        IconButton(
+                          tooltip: 'اختيار لون الأيقونة',
+                          icon: Icon(Icons.auto_awesome, color: Color(wpCategoryIconColors[key] ?? 0xFF00642D)),
+                          onPressed: () async {
+                            final chosen = await _pickCustomColor(
+                              Color(wpCategoryIconColors[key] ?? 0xFF00642D),
+                              'لون أيقونة المربع',
+                            );
+                            if (chosen == null || !mounted) return;
+                            refreshSheet(() => wpCategoryIconColors[key] = chosen.toARGB32());
+                            setState(() {});
+                            await _saveCategorySettings();
+                          },
+                        ),
                         Switch(
                         value: !wpHiddenCategories.contains(key),
                         onChanged: (visible) {
@@ -1383,6 +1403,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                     _homeTileSize='medium';
                     wpCategoryColors.clear();
                     wpCategoryTextColors.clear();
+                    wpCategoryIconColors.clear();
                   });
                   setState(() {});
                   _saveCategorySettings();
@@ -1589,7 +1610,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                     category['id'] as int, category['name'] as String,
                     category['type'] as String),
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(_categoryIcon(category['name'].toString()), size: _homeTileSize == 'small' ? 26 : (_homeTileSize == 'large' ? 46 : 36), color: green),
+                  Icon(_categoryIcon(category['name'].toString()), size: _homeTileSize == 'small' ? 26 : (_homeTileSize == 'large' ? 46 : 36), color: Color(wpCategoryIconColors[_wpKey(category)] ?? 0xFF00642D)),
                   const SizedBox(height: 7),
                   Flexible(child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
