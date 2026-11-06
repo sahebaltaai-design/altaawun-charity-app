@@ -1608,16 +1608,20 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       backgroundColor: Colors.white,
       foregroundColor: deepGreen,
       leading: Builder(builder: (context) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(context).openDrawer())),
-      title: page == 0 ? const Column(mainAxisSize: MainAxisSize.min, children: [
-        _Emblem(size: 58),
-        Text('جمعية التعاون الخيرية', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-        Text('مدرسة الأيتام وكفالتهم', style: TextStyle(fontSize: 12)),
-      ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      titleSpacing: 0,
+      title: page == 0 ? const FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.center,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          _Emblem(size: 54),
+          SizedBox(height: 3),
+          Text('جمعية التعاون الخيرية', maxLines: 1,
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          Text('مدرسة الأيتام وكفالتهم', maxLines: 1,
+            style: TextStyle(fontSize: 12)),
+        ]),
+      ) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       actions: [IconButton(
-        tooltip: 'المساعد الصوتي',
-        onPressed: _openVoiceAssistant,
-        icon: const Icon(Icons.mic_none, color: green),
-      ), IconButton(
         tooltip: 'سلة الكفالات والتبرعات',
         onPressed: _openCart,
         icon: Badge(
