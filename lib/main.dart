@@ -247,7 +247,8 @@ class _HtmlContentState extends State<_HtmlContent> {
 class _CheckoutContent extends StatefulWidget {
   final String url;
   final ValueChanged<int> onCartCount;
-  const _CheckoutContent({super.key, required this.url, required this.onCartCount});
+  final bool allowSiteNavigation;
+  const _CheckoutContent({super.key, required this.url, required this.onCartCount, this.allowSiteNavigation = false});
   @override
   State<_CheckoutContent> createState() => _CheckoutContentState();
 }
@@ -279,6 +280,7 @@ class _CheckoutContentState extends State<_CheckoutContent> {
                 ? NavigationDecision.navigate : NavigationDecision.prevent;
           }
           final path = uri.path.toLowerCase();
+          if (widget.allowSiteNavigation) return NavigationDecision.navigate;
           final originalPath = initial.path.toLowerCase();
           final isOriginal = path == originalPath;
           final isCheckout = path.contains('/checkout') || path.contains('/cart') ||
@@ -781,8 +783,14 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   // Open a slider destination as its actual content, not the news index.
   // WordPress posts use the native detail view; other site pages stay in-app.
   Future<void> _openSlideUrl(String url) async {
-    if (!_validNewsUrl(url) || !mounted) return;
-    final uri = Uri.parse(url);
+    final original = Uri.tryParse(url.trim());
+    if (original == null || !['http', 'https'].contains(original.scheme) ||
+        !['aytamaliraq.com', 'www.aytamaliraq.com'].contains(original.host.toLowerCase()) || !mounted) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رابط الشريحة غير صالح. يرجى تصحيحه من إعدادات السلايدر.')));
+      return;
+    }
+    final safeUrl = original.replace(scheme: 'https').toString();
+    final uri = Uri.parse(safeUrl);
     final segments = uri.pathSegments.where((part) => part.isNotEmpty).toList();
     final slug = segments.isEmpty ? '' : segments.last;
     if (slug.isNotEmpty) {
@@ -806,7 +814,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     setState(() {
       selectedItem = null;
       wpSelectedCategory = null;
-      checkoutUrl = url; // In-app page view, with bottom navigation retained.
+      checkoutUrl = safeUrl;
+      _isSlideDestination = true; // Allow normal WordPress page navigation, unlike checkout.
     });
   }
 
@@ -936,6 +945,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   String wpSelectedType = 'category';
   Map<String, dynamic>? selectedItem;
   String? checkoutUrl;
+  bool _isSlideDestination = false;
   static const String _site = 'https://aytamaliraq.com';
 
   Future<void> _loadWordPressCategories({bool silent = false}) async {
@@ -1038,7 +1048,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
       icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
-    Expanded(child: _CheckoutContent(key: ValueKey(checkoutUrl), url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', onCartCount: (count) {
+    Expanded(child: _CheckoutContent(key: ValueKey('$checkoutUrl/$_isSlideDestination'), url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', allowSiteNavigation: _isSlideDestination, onCartCount: (count) {
       if (mounted && _cartCount != count) setState(() => _cartCount = count);
     })),
   ]);
@@ -1500,7 +1510,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
 
-  void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; });
+  void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; _isSlideDestination = false; });
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -1863,6 +1873,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     wpSelectedType = 'category';
     wpSelectedCategory = null;
     checkoutUrl = null;
+    _isSlideDestination = false;
     selectedItem = Map<String, dynamic>.from(post);
   });
 
