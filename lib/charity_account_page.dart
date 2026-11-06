@@ -98,10 +98,21 @@ class _AccountState extends State<CharityAccountPage> {
 
   Future<void> loadOrders() async {
     if (token == null) return;
+    if (mounted) setState(() => error = null);
     try {
       final result = await api('orders', bearer: token);
-      if (mounted) setState(() => orders = result['orders'] is List ? result['orders'] as List : []);
-    } catch (e) { if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', '')); }
+      if (!mounted) return;
+      final fetched = result['orders'];
+      if (fetched is! List) {
+        setState(() => error = 'تعذر قراءة بيانات الطلبات من خادم الجمعية. لم يتم حذف أي بيانات.');
+        return;
+      }
+      setState(() => orders = fetched);
+    } catch (e) {
+      if (mounted) setState(() => error =
+        'تعذر استعادة الكفالات والطلبات من الخادم. يرجى إعادة المحاولة. ' +
+        e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   Future<void> logout() async {
@@ -138,7 +149,7 @@ class _AccountState extends State<CharityAccountPage> {
       const SizedBox(height: 14),
       Row(children: [const Expanded(child: Text('كفالاتي وطلباتي', style: TextStyle(fontWeight: FontWeight.bold))),
         IconButton(onPressed: busy ? null : loadOrders, icon: const Icon(Icons.refresh))]),
-      if (orders.isEmpty) const Card(child: ListTile(title: Text('لا توجد طلبات مرتبطة بالحساب'))),
+      if (orders.isEmpty && error == null) const Card(child: ListTile(title: Text('لا تظهر طلبات مرتبطة بهذا الحساب حاليًا'), subtitle: Text('إذا كانت لديك طلبات سابقة، تواصل مع الجمعية للتحقق من ربطها بحسابك.'))),
       for (final order in orders) if (order is Map) Card(child: ListTile(
         title: Text('طلب رقم ' + (order['id']?.toString() ?? '')),
         subtitle: Text('التاريخ: ' + (order['date']?.toString() ?? '') + ' | الحالة: ' + (order['status']?.toString() ?? '')),
