@@ -24,6 +24,7 @@ class _CharityVoiceAssistantState extends State<CharityVoiceAssistant> {
   List<Map<String, dynamic>> _results = [];
   Timer? _restart;
   bool _disposed = false;
+  bool _handling = false;
 
   @override
   void initState() {
@@ -34,13 +35,13 @@ class _CharityVoiceAssistantState extends State<CharityVoiceAssistant> {
   Future<void> _setup() async {
     final prefs = await SharedPreferences.getInstance();
     _continuous = prefs.getBool('voice_continuous_mode') ?? false;
-    await _tts.setLanguage('ar-SA');
+    try { await _tts.setLanguage('ar-SA'); } catch (_) {}
     await _tts.setSpeechRate(0.48);
     _tts.setCompletionHandler(() {
       _speaking = false;
       if (_continuous) _scheduleListen();
     });
-    _ready = await _speech.initialize(
+    try { _ready = await _speech.initialize(
       onStatus: (status) {
         if (_disposed) return;
         if (status == 'done' || status == 'notListening') {
@@ -55,8 +56,9 @@ class _CharityVoiceAssistantState extends State<CharityVoiceAssistant> {
         if (_continuous && !_speaking) _scheduleListen();
       },
     );
+    } catch (_) { _ready = false; }
     if (!mounted) return;
-    setState(() {});
+    setState(() { if (!_ready) _message = 'الميكروفون غير جاهز. تأكد من إذن الميكروفون وخدمة التعرف على الكلام في الهاتف.'; });
     if (_continuous && _ready) _scheduleListen();
   }
 
@@ -75,13 +77,16 @@ class _CharityVoiceAssistantState extends State<CharityVoiceAssistant> {
     _listening = false;
     _speaking = true;
     setState(() => _message = message);
-    await _tts.speak(message);
+    try { await _tts.speak(message); } catch (_) {
+      _speaking = false;
+      if (mounted) setState(() => _message = '$message\nتعذر تشغيل الصوت. تحقق من إعدادات تحويل النص إلى كلام.');
+    }
   }
 
   Future<void> _listen() async {
     if (!_ready || _listening || _speaking || !mounted) return;
     setState(() { _listening = true; _heard = ''; _message = 'أستمع إليك الآن'; });
-    await _speech.listen(
+    try { await _speech.listen(
       localeId: 'ar_SA',
       listenFor: const Duration(seconds: 25),
       pauseFor: const Duration(seconds: 3),
@@ -91,59 +96,88 @@ class _CharityVoiceAssistantState extends State<CharityVoiceAssistant> {
         if (result.finalResult && _heard.trim().isNotEmpty) {
           _restart?.cancel();
           _speech.stop();
-          _execute(_heard.trim());
+          if (!_handling) _execute(_heard.trim());
         }
       },
-    );
+    ); } catch (_) { if (mounted) setState(() { _listening = false; _message = 'تعذر تشغيل الميكروفون. تحقق من الأذونات.'; }); }
   }
 
   Future<void> _execute(String command) async {
-    final q = command.toLowerCase();
-    if (q.contains('توقف') || q.contains('اسكت') || q.contains('إيقاف')) {
-      _restart?.cancel();
-      _continuous = false;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('voice_continuous_mode', false);
-      await _tts.stop();
-      await _speech.stop();
-      if (mounted) setState(() { _speaking = false; _listening = false; _message = 'تم إيقاف الاستماع المستمر'; });
-      return;
+    if (_handling) return;
+    _handling = true;
+    try {
+      final q = command.toLowerCase().replaceAll('أ', 'ا').replaceAll('إ', 'ا').replaceAll('آ', 'ا');
+      if (q.contains('توقف') || q.contains('اسكت') || q.contains('ايقاف')) {
+        await _changeMode(false);
+        await _tts.stop();
+        if (mounted) setState(() { _speaking = false; _message = 'تم إيقاف المساعد'; });
+        return;
+      }
+      if (q.contains('كيف') || q.contains('كيفية') || q.contains('شلون') || q.contains('طريقة')) {
+        if (q.contains('تبرع') || q.contains('التبرع')) {
+          await _say('للتبرع افتح قسم تبرع في أسفل التطبيق، اختر الحملة أو الكفالة، ثم اتبع خطوات التبرع. لا يتم تأكيد أي دفع بالصوت.');
+          return;
+        }
+        if (q.contains('تطبيق') || q.contains('استخدم') || q.contains('استعمل')) {
+          await _say('يمكنك قول افتح الأخبار، اقرأ آخر الأخبار، ابحث عن المدرسة، افتح التبرعات، أو اقرأ الأول. يمكنك تغيير الاستماع المستمر من هذه الشاشة.');
+          return;
+        }
+      }
+      if ((q.contains('اقرا') && q.contains('اخبار')) || q.contains('اخر الاخبار') || q.contains('اقرا الاخبار')) {
+        await _latestNews();
+        return;
+      }
+      if (q.contains('الرئيسية') || q.contains('الرئيسيه')) {
+        await _say('سأفتح الرئيسية');
+        widget.onNavigate(0);
+        return;
+      }
+      if (q.contains('تبرع') || q.contains('الكفالة') || q.contains('كفالة')) {
+        await _say('سأفتح قسم التبرعات والكفالات');
+        widget.onNavigate(1);
+        return;
+      }
+      if (q.contains('الاخبار') || q.contains('اخبار')) {
+        await _say('سأفتح قسم الأخبار. للقراءة قل اقرأ آخر الأخبار');
+        widget.onNavigate(4);
+        return;
+      }
+      if (q.contains('حسابي')) {
+        await _say('سأفتح صفحة حسابي');
+        widget.onNavigate(7);
+        return;
+      }
+      if (q.contains('التالي') && _results.isNotEmpty) {
+        _results.add(_results.removeAt(0));
+        await _readFirst();
+        return;
+      }
+      if ((q.contains('اقرا') || q.contains('افتح') || q.contains('الاول')) && _results.isNotEmpty) {
+        await _readFirst();
+        return;
+      }
+      await _search(command.replaceAll(RegExp(r'^(ابحث عن|دور على|فتش عن)\\s*'), ''));
+    } finally {
+      _handling = false;
     }
-    if (q.contains('الرئيسية') || q.contains('الرئيسيه')) {
-      widget.onNavigate(0);
-      await _say('تم فتح الرئيسية');
-      return;
-    }
-    if (q.contains('تبرع') || q.contains('الكفالة') || q.contains('كفالة')) {
-      widget.onNavigate(1);
-      await _say('تم فتح قسم التبرعات والكفالات. لا يتم تأكيد أي تبرع بالصوت.');
-      return;
-    }
-    if (q.contains('الأخبار') || q.contains('اخبار')) {
-      widget.onNavigate(4);
-      await _say('تم فتح قسم الأخبار');
-      return;
-    }
-    if (q.contains('حسابي')) {
-      widget.onNavigate(7);
-      await _say('تم فتح صفحة حسابي');
-      return;
-    }
-    if (q.contains('التالي') && _results.isNotEmpty) {
-      _results.add(_results.removeAt(0));
-      await _readFirst();
-      return;
-    }
-    if ((q.contains('اقرأ') || q.contains('افتح') || q.contains('الأول')) && _results.isNotEmpty) {
-      await _readFirst();
-      return;
-    }
-    await _search(command);
+  }
+
+  Future<void> _latestNews() async {
+    try {
+      final response = await http.get(Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/posts?per_page=5&_embed=1'))
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) throw Exception('news');
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      if (data is! List || data.isEmpty) { await _say('لا توجد أخبار متاحة الآن.'); return; }
+      _results = data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      final titles = _results.take(3).map((item) =>
+          (item['title'] is Map ? item['title']['rendered'] : '').toString().replaceAll(RegExp(r'<[^>]*>'), '')).join('، ');
+      await _say('آخر الأخبار: $titles. قل اقرأ الأول لقراءة التفاصيل، أو التالي.');
+    } catch (_) { await _say('تعذر جلب الأخبار الآن. تحقق من اتصال الإنترنت.'); }
   }
 
   Future<void> _readFirst() async {
     final item = _results.first;
-    widget.onOpenPost(item);
     final title = (item['title'] is Map ? item['title']['rendered'] : '').toString()
         .replaceAll(RegExp(r'<[^>]*>'), '');
     final body = (item['content'] is Map ? item['content']['rendered'] : '').toString()
