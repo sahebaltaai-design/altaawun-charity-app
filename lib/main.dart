@@ -289,7 +289,7 @@ class _CheckoutContentState extends State<_CheckoutContent> {
   bool _errorReported = false;
   static const _authStorage = FlutterSecureStorage();
   Future<void> _loadCheckoutWithAccount(String destination) async {
-    if (widget.allowSiteNavigation) {
+    if (widget.allowSiteNavigation || !(Uri.tryParse(destination)?.path.toLowerCase().contains('/cart') ?? false)) {
       await controller.loadRequest(Uri.parse(destination));
       return;
     }
@@ -352,7 +352,8 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           final isCheckout = path.contains('/checkout') || path.contains('/cart') ||
               path.contains('/order-pay') || path.contains('/order-received') ||
               path.contains('/my-account') || path.contains('/wc-api/');
-          final isAction = uri.queryParameters.containsKey('add-to-cart') ||
+          final isAction = uri.queryParameters.containsKey('altaawun_cart_bridge') ||
+              uri.queryParameters.containsKey('add-to-cart') ||
               uri.queryParameters.containsKey('wc-ajax') ||
               uri.queryParameters.containsKey('remove_item') ||
               uri.queryParameters.containsKey('undo_item');
