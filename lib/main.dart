@@ -114,7 +114,20 @@ class _AltaawunAppState extends State<AltaawunApp> {
               titleMedium: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             scaffoldBackgroundColor: Colors.white,
-            colorScheme: ColorScheme.fromSeed(seedColor: green),
+            canvasColor: Colors.white,
+            dialogBackgroundColor: Colors.white,
+            colorScheme: ColorScheme.fromSeed(seedColor: green).copyWith(
+              surface: Colors.white,
+              onSurface: Colors.black87,
+            ),
+            dialogTheme: const DialogThemeData(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
+            ),
+            bottomSheetTheme: const BottomSheetThemeData(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
+            ),
             appBarTheme: const AppBarTheme(backgroundColor: green, foregroundColor: Colors.white, centerTitle: true),
           ),
           builder: (context, child) => Directionality(
@@ -2020,6 +2033,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   void _openAppSettings() {
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (settingsContext) => Scaffold(
+        backgroundColor: Colors.white,
         appBar: AppBar(
           title: const Text('الإعدادات'),
           backgroundColor: Colors.white,
