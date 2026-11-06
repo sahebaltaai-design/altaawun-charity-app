@@ -1,5 +1,6 @@
 import 'package:upgrader/upgrader.dart';
 import 'charity_about_content.dart';
+import 'charity_voice_assistant.dart';
 import 'charity_account_page.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
@@ -1568,6 +1569,21 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     );
   }
 
+  void _openVoiceAssistant() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CharityVoiceAssistant(
+        onNavigate: (destination) {
+          go(destination);
+          Navigator.of(context).pop();
+        },
+        onOpenPost: (post) {
+          _openNewsPost(post);
+          Navigator.of(context).pop();
+        },
+      ),
+    ));
+  }
+
   void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
 
   void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; _isSlideDestination = false; });
@@ -1584,6 +1600,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         Text('مدرسة الأيتام وكفالتهم', style: TextStyle(fontSize: 12)),
       ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       actions: [IconButton(
+        tooltip: 'المساعد الصوتي',
+        onPressed: _openVoiceAssistant,
+        icon: const Icon(Icons.mic_none, color: green),
+      ), IconButton(
         tooltip: 'سلة الكفالات والتبرعات',
         onPressed: _openCart,
         icon: Badge(
@@ -1634,6 +1654,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ListTile(leading: const Icon(Icons.notifications_active, color: green),
         title: const Text('إعدادات الإشعارات'),
         onTap: () { Navigator.pop(context); _showNotificationPreferences(); }),
+      ListTile(
+        leading: const Icon(Icons.record_voice_over, color: green),
+        title: const Text('مساعد التعاون الصوتي'),
+        subtitle: const Text('بحث وقراءة وتنقل بالصوت، مع خيار الاستماع المستمر'),
+        onTap: () { Navigator.pop(context); _openVoiceAssistant(); },
+      ),
       ListTile(
         leading: const Icon(Icons.text_fields, color: green),
         title: const Text('نوع الخط وحجمه'),
