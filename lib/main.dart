@@ -56,7 +56,7 @@ const deepGreen = Color(0xFF004521);
 const red = Color(0xFFB70922);
 const ivory = Color(0xFFF8F8F5);
 
-final ValueNotifier<String> selectedAppFont = ValueNotifier('Tajawal');
+final ValueNotifier<String> selectedAppFont = ValueNotifier('Cairo');
 final ValueNotifier<String> selectedAppFontSize = ValueNotifier('medium');
 
 class AltaawunApp extends StatefulWidget {
@@ -74,7 +74,7 @@ class _AltaawunAppState extends State<AltaawunApp> {
 
   Future<void> _restoreTypography() async {
     final prefs = await SharedPreferences.getInstance();
-    selectedAppFont.value = prefs.getString('app_font') ?? 'Tajawal';
+    selectedAppFont.value = prefs.getString('app_font') ?? 'Cairo';
     selectedAppFontSize.value = prefs.getString('app_font_size') ?? 'medium';
   }
 
@@ -1024,7 +1024,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       const SizedBox(height: 12),
       if (!isProduct) const Padding(padding: EdgeInsets.only(bottom: 10),
         child: Text('تفاصيل الخبر', style: TextStyle(fontSize: 16, color: green, fontWeight: FontWeight.bold))),
-      Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+      Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, height: 1.35)),
       if (price.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(_plainText(price), style: const TextStyle(fontSize: 19, color: green))),
       if (content.isNotEmpty && isProduct) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_plainText(content), style: const TextStyle(fontSize: 16, height: 1.7))),
@@ -1913,7 +1913,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   Text(_plainText((post['title']?['rendered'] ?? '').toString()),
                     textAlign: TextAlign.right, maxLines: 3, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, height: 1.35)),
                   const SizedBox(height: 7),
                   Text((post['date'] ?? '').toString().split('T').first,
                     style: const TextStyle(fontSize: 12, color: Colors.grey)),
