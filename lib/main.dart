@@ -296,8 +296,12 @@ class _CheckoutContentState extends State<_CheckoutContent> {
         onPageFinished: (url) {
           final uri = Uri.tryParse(url);
           if (uri != null && (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
-            controller.runJavaScript(_cartWatcherScript);
-            controller.runJavaScript(_appCheckoutDisplayScript);
+            if (widget.allowSiteNavigation) {
+              controller.runJavaScript(_slideDetailDisplayScript);
+            } else {
+              controller.runJavaScript(_cartWatcherScript);
+              controller.runJavaScript(_appCheckoutDisplayScript);
+            }
           }
         },
       ))
@@ -305,6 +309,25 @@ class _CheckoutContentState extends State<_CheckoutContent> {
   }
   // Remove unrelated site chrome only while the embedded cart/checkout is open.
   // Keep WooCommerce forms, payment gateways, and order details untouched.
+  static const _slideDetailDisplayScript = r'''(function(){
+    if(document.getElementById('altaawun-slide-detail-style')) return;
+    var style=document.createElement('style');
+    style.id='altaawun-slide-detail-style';
+    style.textContent=[
+      'header, footer, nav, aside, #masthead, #colophon, #secondary,',
+      '.site-header, .site-footer, .elementor-location-header, .elementor-location-footer,',
+      '.main-navigation, .sidebar, .widget-area, .breadcrumbs, .breadcrumb,',
+      '.related-posts, .related, .comments-area, #comments, .social-share,',
+      '.share-buttons, .footer-widgets, .footer-bottom, .scroll-to-top,',
+      '.back-to-top, .site-info {display:none!important;}',
+      'body {margin:0!important;padding:0!important;overflow-x:hidden!important;}',
+      'main, article, .entry-content, .site-content, .content-area,',
+      '.elementor-location-single {max-width:100%!important;width:100%!important;}',
+      'img, video, iframe {max-width:100%!important;}'
+    ].join(' ');
+    document.head.appendChild(style);
+  })();''';
+
   static const _appCheckoutDisplayScript = r'''(function(){
     var path = location.pathname.toLowerCase();
     if (!(path.includes('/cart') || path.includes('/checkout') || path.includes('/order-pay'))) return;
@@ -818,12 +841,14 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       }
     }
     if (!mounted) return;
-    // Do not display the whole WordPress website when a slide has no
-    // resolvable article/page. Ask the editor to link the actual content.
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('تعذر العثور على تفاصيل هذه الشريحة. تأكد أن رابط الزر يشير إلى الخبر أو صفحة الدورة المنشورة.'),
-      duration: Duration(seconds: 6),
-    ));
+    // Custom WordPress content types may not be exposed by the standard
+    // posts/pages endpoints. Show the linked content in a focused in-app view.
+    setState(() {
+      selectedItem = null;
+      wpSelectedCategory = null;
+      checkoutUrl = uri.toString();
+      _isSlideDestination = true;
+    });
   }
 
   void _onLocalNotificationTap() {
