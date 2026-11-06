@@ -1660,25 +1660,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         title: const Text('سلة الكفالات والتبرعات'),
         onTap: () { Navigator.pop(context); _openCart(); }),
       ListTile(
-        leading: const Icon(Icons.tune, color: green),
-        title: const Text('تخصيص الواجهة الرئيسية'),
-        subtitle: const Text('ترتيب الأقسام وحجم المربعات وإخفاؤها'),
-        onTap: () { Navigator.pop(context); _manageCategories(); },
-      ),
-      ListTile(leading: const Icon(Icons.notifications_active, color: green),
-        title: const Text('إعدادات الإشعارات'),
-        onTap: () { Navigator.pop(context); _showNotificationPreferences(); }),
-      ListTile(
-        leading: const Icon(Icons.record_voice_over, color: green),
-        title: const Text('مساعد التعاون الصوتي'),
-        subtitle: const Text('بحث وقراءة وتنقل بالصوت، مع خيار الاستماع المستمر'),
-        onTap: () { Navigator.pop(context); _openVoiceAssistant(); },
-      ),
-      ListTile(
-        leading: const Icon(Icons.text_fields, color: green),
-        title: const Text('نوع الخط وحجمه'),
-        subtitle: const Text('Tajawal، Cairo، Almarai، Amiri'),
-        onTap: () { Navigator.pop(context); _showFontPreferences(); },
+        leading: const Icon(Icons.settings_outlined, color: green),
+        title: const Text('الإعدادات'),
+        subtitle: const Text('جميع خيارات التطبيق من صفحة حسابي'),
+        onTap: () { Navigator.pop(context); go(7); _openAppSettings(); },
       ),
       Expanded(child: ListView(children: [
         for (var i = 0; i < names.length; i++)
@@ -2028,7 +2013,71 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     },
   );
 
-  Widget _accountPage() => CharityAccountPage(cartCount: _cartCount, onOpenCart: _openCart);
+  void _openAppSettings() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (settingsContext) => Scaffold(
+        appBar: AppBar(
+          title: const Text('الإعدادات'),
+          backgroundColor: Colors.white,
+          foregroundColor: deepGreen,
+        ),
+        body: ListView(padding: const EdgeInsets.symmetric(vertical: 12), children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Text('إعدادات التطبيق', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: deepGreen)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.record_voice_over, color: green),
+            title: const Text('المساعد الصوتي'),
+            subtitle: const Text('التحدث والقراءة والاستماع المستمر'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _openVoiceAssistant,
+          ),
+          ListTile(
+            leading: const Icon(Icons.text_fields, color: green),
+            title: const Text('الخط وحجم الكتابة'),
+            subtitle: const Text('Cairo والخطوط الأخرى'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _showFontPreferences,
+          ),
+          ListTile(
+            leading: const Icon(Icons.notifications_active, color: green),
+            title: const Text('الإشعارات والأصوات'),
+            subtitle: const Text('النغمات والاهتزاز'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _showNotificationPreferences,
+          ),
+          ListTile(
+            leading: const Icon(Icons.dashboard_customize, color: green),
+            title: const Text('تخصيص الصفحة الرئيسية'),
+            subtitle: const Text('ترتيب الأقسام وحجم المربعات وإخفاؤها'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _manageCategories,
+          ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Text('يمكن تغيير هذه الخيارات في أي وقت.', style: TextStyle(color: Colors.black54)),
+          ),
+        ]),
+      ),
+    ));
+  }
+
+  Widget _accountPage() => Column(children: [
+    Expanded(child: CharityAccountPage(cartCount: _cartCount, onOpenCart: _openCart)),
+    SafeArea(top: false, child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      child: SizedBox(width: double.infinity, child: FilledButton.icon(
+        onPressed: _openAppSettings,
+        icon: const Icon(Icons.settings_outlined),
+        label: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text('الإعدادات  Settings', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        ),
+      )),
+    )),
+  ]);
 
   Widget _section() {
     final descriptions = [
