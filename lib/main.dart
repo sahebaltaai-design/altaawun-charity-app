@@ -11,6 +11,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -223,7 +224,8 @@ class _DonationWebScreenState extends State<DonationWebScreen> {
           return NavigationDecision.navigate;
         },
       ))
-      ..loadRequest(Uri.parse(widget.url));
+      ;
+    _loadCheckoutWithAccount(widget.url);
   }
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -285,6 +287,34 @@ class _CheckoutContent extends StatefulWidget {
 class _CheckoutContentState extends State<_CheckoutContent> {
   late final WebViewController controller;
   bool _errorReported = false;
+  static const _authStorage = FlutterSecureStorage();
+  Future<void> _loadCheckoutWithAccount(String destination) async {
+    if (widget.allowSiteNavigation) {
+      await controller.loadRequest(Uri.parse(destination));
+      return;
+    }
+    try {
+      final token = await _authStorage.read(key: 'altaawun_token');
+      if (token != null && token.isNotEmpty) {
+        final response = await http.post(
+          Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun-app/v1/cart-session'),
+          headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 15));
+        if (response.statusCode == 200) {
+          final payload = jsonDecode(response.body);
+          final bridgeUrl = Uri.tryParse((payload['url'] ?? '').toString());
+          if (bridgeUrl != null && bridgeUrl.scheme == 'https' &&
+              (bridgeUrl.host == 'www.aytamaliraq.com' || bridgeUrl.host == 'aytamaliraq.com')) {
+            await controller.loadRequest(bridgeUrl);
+            return;
+          }
+        }
+      }
+    } catch (_) {
+      // Guest checkout remains available when the account bridge is offline.
+    }
+    await controller.loadRequest(Uri.parse(destination));
+  }
   void _reportPageError() {
     if (_errorReported || !widget.allowSiteNavigation) return;
     _errorReported = true;
@@ -435,7 +465,7 @@ class _CheckoutContentState extends State<_CheckoutContent> {
   void didUpdateWidget(covariant _CheckoutContent oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
-      controller.loadRequest(Uri.parse(widget.url));
+      _loadCheckoutWithAccount(widget.url);
     }
   }
   @override
