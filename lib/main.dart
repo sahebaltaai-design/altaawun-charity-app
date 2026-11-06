@@ -183,12 +183,6 @@ class DonationWebScreen extends StatefulWidget {
 
 class _DonationWebScreenState extends State<DonationWebScreen> {
   late final WebViewController controller;
-  bool _errorReported = false;
-  void _reportPageError() {
-    if (_errorReported || !widget.allowSiteNavigation) return;
-    _errorReported = true;
-    widget.onPageNotFound?.call();
-  }
   @override
   void initState() {
     super.initState();
@@ -198,7 +192,6 @@ class _DonationWebScreenState extends State<DonationWebScreen> {
         onNavigationRequest: (request) {
           final uri = Uri.tryParse(request.url);
           if (uri == null || !['https', 'http'].contains(uri.scheme)) return NavigationDecision.prevent;
-          if (widget.allowSiteNavigation) return NavigationDecision.navigate;
           return NavigationDecision.navigate;
         },
       ))
@@ -263,6 +256,12 @@ class _CheckoutContent extends StatefulWidget {
 }
 class _CheckoutContentState extends State<_CheckoutContent> {
   late final WebViewController controller;
+  bool _errorReported = false;
+  void _reportPageError() {
+    if (_errorReported || !widget.allowSiteNavigation) return;
+    _errorReported = true;
+    widget.onPageNotFound?.call();
+  }
   @override
   void initState() {
     super.initState();
