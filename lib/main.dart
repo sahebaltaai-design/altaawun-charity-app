@@ -75,6 +75,15 @@ class _AltaawunAppState extends State<AltaawunApp> {
 
   Future<void> _restoreTypography() async {
     final prefs = await SharedPreferences.getInstance();
+    // One-time migration: earlier builds saved Tajawal as the default.
+    // Apply the new Cairo design once, then respect subsequent user choices.
+    if (!(prefs.getBool('cairo_default_migrated') ?? false)) {
+      final previous = prefs.getString('app_font');
+      if (previous == null || previous == 'Tajawal') {
+        await prefs.setString('app_font', 'Cairo');
+      }
+      await prefs.setBool('cairo_default_migrated', true);
+    }
     selectedAppFont.value = prefs.getString('app_font') ?? 'Cairo';
     selectedAppFontSize.value = prefs.getString('app_font_size') ?? 'medium';
   }
@@ -97,7 +106,13 @@ class _AltaawunAppState extends State<AltaawunApp> {
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
             useMaterial3: true,
-            textTheme: textTheme,
+            textTheme: textTheme.copyWith(
+              headlineLarge: textTheme.headlineLarge?.copyWith(fontWeight: FontWeight.w800),
+              headlineMedium: textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+              headlineSmall: textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              titleLarge: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              titleMedium: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
             scaffoldBackgroundColor: Colors.white,
             colorScheme: ColorScheme.fromSeed(seedColor: green),
             appBarTheme: const AppBarTheme(backgroundColor: green, foregroundColor: Colors.white, centerTitle: true),
