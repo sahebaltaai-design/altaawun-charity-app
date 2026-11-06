@@ -182,6 +182,12 @@ class DonationWebScreen extends StatefulWidget {
 
 class _DonationWebScreenState extends State<DonationWebScreen> {
   late final WebViewController controller;
+  bool _errorReported = false;
+  void _reportPageError() {
+    if (_errorReported || !widget.allowSiteNavigation) return;
+    _errorReported = true;
+    widget.onPageNotFound?.call();
+  }
   @override
   void initState() {
     super.initState();
@@ -190,7 +196,8 @@ class _DonationWebScreenState extends State<DonationWebScreen> {
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (request) {
           final uri = Uri.tryParse(request.url);
-          if (uri == null || uri.scheme != 'https') return NavigationDecision.prevent;
+          if (uri == null || !['https', 'http'].contains(uri.scheme)) return NavigationDecision.prevent;
+          if (widget.allowSiteNavigation) return NavigationDecision.navigate;
           return NavigationDecision.navigate;
         },
       ))
@@ -248,7 +255,8 @@ class _CheckoutContent extends StatefulWidget {
   final String url;
   final ValueChanged<int> onCartCount;
   final bool allowSiteNavigation;
-  const _CheckoutContent({super.key, required this.url, required this.onCartCount, this.allowSiteNavigation = false});
+  final VoidCallback? onPageNotFound;
+  const _CheckoutContent({super.key, required this.url, required this.onCartCount, this.allowSiteNavigation = false, this.onPageNotFound});
   @override
   State<_CheckoutContent> createState() => _CheckoutContentState();
 }
@@ -292,6 +300,14 @@ class _CheckoutContentState extends State<_CheckoutContent> {
               uri.queryParameters.containsKey('undo_item');
           return isOriginal || isCheckout || isAction
               ? NavigationDecision.navigate : NavigationDecision.prevent;
+        },
+        onWebResourceError: (error) {
+          if (error.isForMainFrame == true) _reportPageError();
+        },
+        onHttpError: (error) {
+          if (error.response?.statusCode == 404 || error.response?.statusCode == 410) {
+            _reportPageError();
+          }
         },
         onPageFinished: (url) {
           final uri = Uri.tryParse(url);
@@ -806,17 +822,25 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   // Open a slider destination as its actual content, not the news index.
   // WordPress posts use the native detail view; other site pages stay in-app.
   Future<void> _openSlideUrl(String url) async {
-    final original = Uri.tryParse(url.trim());
+    final input = url.trim();
+    final original = Uri.tryParse(input.startsWith('www.') ? 'https://$input' : input);
     if (original == null || !['http', 'https'].contains(original.scheme) ||
-        !['aytamaliraq.com', 'www.aytamaliraq.com'].contains(original.host.toLowerCase()) || !mounted) {
+        original.host.isEmpty || !mounted) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('رابط الشريحة غير صالح. يرجى تصحيحه من إعدادات السلايدر.')));
       return;
     }
-    final uri = original.replace(scheme: 'https');
+    final isCharitySite = ['aytamaliraq.com', 'www.aytamaliraq.com'].contains(original.host.toLowerCase());
+    final cleanParams = Map<String, String>.from(original.queryParameters)
+      ..remove('preview') ..remove('preview_id') ..remove('preview_nonce');
+    final uri = original.replace(scheme: 'https', queryParameters: cleanParams.isEmpty ? null : cleanParams);
+    if (!isCharitySite) {
+      setState(() { selectedItem = null; wpSelectedCategory = null; checkoutUrl = uri.toString(); _isSlideDestination = true; });
+      return;
+    }
     final segments = uri.pathSegments.where((part) => part.isNotEmpty).toList();
     final slug = segments.isEmpty ? '' : segments.last;
-    final id = int.tryParse(uri.queryParameters['p'] ?? uri.queryParameters['page_id'] ?? '');
+    final id = int.tryParse(uri.queryParameters['p'] ?? uri.queryParameters['page_id'] ?? original.queryParameters['preview_id'] ?? '');
     // Resolve legacy /index.php?p=123 and modern permalinks into native content.
     for (final type in const ['posts', 'pages']) {
       try {
@@ -1080,7 +1104,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
       icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
-    Expanded(child: _CheckoutContent(key: ValueKey('$checkoutUrl/$_isSlideDestination'), url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', allowSiteNavigation: _isSlideDestination, onCartCount: (count) {
+    Expanded(child: _CheckoutContent(key: ValueKey('$checkoutUrl/$_isSlideDestination'), url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', allowSiteNavigation: _isSlideDestination, onPageNotFound: () {
+      if (!mounted || !_isSlideDestination) return;
+      setState(() { checkoutUrl = null; _isSlideDestination = false; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر العثور على الصفحة أو الخبر')));
+    }, onCartCount: (count) {
       if (mounted && _cartCount != count) setState(() => _cartCount = count);
     })),
   ]);
