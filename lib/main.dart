@@ -225,7 +225,7 @@ class _DonationWebScreenState extends State<DonationWebScreen> {
         },
       ))
       ;
-    _loadCheckoutWithAccount(widget.url);
+    controller.loadRequest(Uri.parse(widget.url));
   }
   @override
   Widget build(BuildContext context) => Scaffold(
