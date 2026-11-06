@@ -786,37 +786,44 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     final original = Uri.tryParse(url.trim());
     if (original == null || !['http', 'https'].contains(original.scheme) ||
         !['aytamaliraq.com', 'www.aytamaliraq.com'].contains(original.host.toLowerCase()) || !mounted) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رابط الشريحة غير صالح. يرجى تصحيحه من إعدادات السلايدر.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('رابط الشريحة غير صالح. يرجى تصحيحه من إعدادات السلايدر.')));
       return;
     }
-    final safeUrl = original.replace(scheme: 'https').toString();
-    final uri = Uri.parse(safeUrl);
+    final uri = original.replace(scheme: 'https');
     final segments = uri.pathSegments.where((part) => part.isNotEmpty).toList();
     final slug = segments.isEmpty ? '' : segments.last;
-    if (slug.isNotEmpty) {
+    final id = int.tryParse(uri.queryParameters['p'] ?? uri.queryParameters['page_id'] ?? '');
+    // Resolve legacy /index.php?p=123 and modern permalinks into native content.
+    for (final type in const ['posts', 'pages']) {
       try {
-        final endpoint = Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/posts')
-            .replace(queryParameters: {'slug': slug, '_embed': '1'});
-        final response = await http.get(endpoint).timeout(const Duration(seconds: 12));
-        if (response.statusCode == 200) {
-          final data = jsonDecode(utf8.decode(response.bodyBytes));
-          if (data is List && data.isNotEmpty && data.first is Map) {
-            if (!mounted) return;
-            _openNewsPost(Map<String, dynamic>.from(data.first as Map));
-            return;
-          }
+        final endpoint = Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/$type');
+        final target = id != null && id > 0
+            ? endpoint.replace(path: '${endpoint.path}/$id', queryParameters: {'_embed': '1'})
+            : endpoint.replace(queryParameters: {'slug': slug, '_embed': '1'});
+        if (id == null && (slug.isEmpty || slug == 'index.php')) continue;
+        final response = await http.get(target).timeout(const Duration(seconds: 12));
+        if (response.statusCode != 200) continue;
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        final Map<String, dynamic>? item = data is Map
+            ? Map<String, dynamic>.from(data)
+            : data is List && data.isNotEmpty && data.first is Map
+                ? Map<String, dynamic>.from(data.first as Map) : null;
+        if (item != null && mounted) {
+          _openNewsPost(item);
+          return;
         }
       } catch (error) {
-        debugPrint('Slider post lookup: $error');
+        debugPrint('Slider $type lookup: $error');
       }
     }
     if (!mounted) return;
-    setState(() {
-      selectedItem = null;
-      wpSelectedCategory = null;
-      checkoutUrl = safeUrl;
-      _isSlideDestination = true; // Allow normal WordPress page navigation, unlike checkout.
-    });
+    // Do not display the whole WordPress website when a slide has no
+    // resolvable article/page. Ask the editor to link the actual content.
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('تعذر العثور على تفاصيل هذه الشريحة. تأكد أن رابط الزر يشير إلى الخبر أو صفحة الدورة المنشورة.'),
+      duration: Duration(seconds: 6),
+    ));
   }
 
   void _onLocalNotificationTap() {
