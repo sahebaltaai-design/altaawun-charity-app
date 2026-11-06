@@ -574,7 +574,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                 style: const TextStyle(color: Colors.white, fontSize: 16)),
             ])),
           if (url.startsWith('https://')) Positioned(right: 18, bottom: 16,
-            child: FilledButton(onPressed: () => _openNotificationUrl(url),
+            child: FilledButton(onPressed: () => _openSlideUrl(url),
               child: Text((slide['button'] ?? 'المزيد').toString()))),
           if (_appSlides.length > 1) ...[
             Positioned(left: 4, top: 85, child: IconButton.filledTonal(
@@ -775,6 +775,38 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       selectedItem = null;
       wpSelectedCategory = null;
       page = 4;
+    });
+  }
+
+  // Open a slider destination as its actual content, not the news index.
+  // WordPress posts use the native detail view; other site pages stay in-app.
+  Future<void> _openSlideUrl(String url) async {
+    if (!_validNewsUrl(url) || !mounted) return;
+    final uri = Uri.parse(url);
+    final segments = uri.pathSegments.where((part) => part.isNotEmpty).toList();
+    final slug = segments.isEmpty ? '' : segments.last;
+    if (slug.isNotEmpty) {
+      try {
+        final endpoint = Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/posts')
+            .replace(queryParameters: {'slug': slug, '_embed': '1'});
+        final response = await http.get(endpoint).timeout(const Duration(seconds: 12));
+        if (response.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          if (data is List && data.isNotEmpty && data.first is Map) {
+            if (!mounted) return;
+            _openNewsPost(Map<String, dynamic>.from(data.first as Map));
+            return;
+          }
+        }
+      } catch (error) {
+        debugPrint('Slider post lookup: $error');
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      selectedItem = null;
+      wpSelectedCategory = null;
+      checkoutUrl = url; // In-app page view, with bottom navigation retained.
     });
   }
 
