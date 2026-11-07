@@ -957,10 +957,30 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Future<void> _setupPush() async {
     try {
       final messaging = FirebaseMessaging.instance;
-      await messaging.requestPermission();
-      await _syncNotificationToneTopic();
+      final permission = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      debugPrint('Notification authorization: ${permission.authorizationStatus}');
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        // APNs registration is asynchronous on real iPhones. FCM token/topic
+        // calls before the APNs token exists can fail and abort setup.
+        String? apnsToken;
+        for (var attempt = 0; attempt < 12; attempt++) {
+          apnsToken = await messaging.getAPNSToken();
+          if (apnsToken != null) break;
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
+        if (apnsToken == null) {
+          debugPrint('APNs token unavailable; check iOS signing and push entitlement');
+          return;
+        }
+      }
       final token = await messaging.getToken();
       if (mounted) setState(() => _fcmToken = token);
+      await _syncNotificationToneTopic();
       FirebaseMessaging.instance.onTokenRefresh.listen((value) {
         if (mounted) setState(() => _fcmToken = value);
       });
