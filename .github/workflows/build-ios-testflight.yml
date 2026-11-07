@@ -76,6 +76,26 @@ jobs:
           RUBY
           echo "Configured production APNs entitlement and remote notification background mode"
 
+      - name: Ensure native iOS APNs registration
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('ios/Runner/AppDelegate.swift')
+          source = path.read_text()
+          if 'import UserNotifications' not in source:
+              source = source.replace('import UIKit', 'import UIKit\nimport UserNotifications')
+          if 'application.registerForRemoteNotifications()' not in source:
+              source = source.replace(
+                  'GeneratedPluginRegistrant.register(with: self)',
+                  '''GeneratedPluginRegistrant.register(with: self)
+              UNUserNotificationCenter.current().delegate = self
+              application.registerForRemoteNotifications()'''
+              )
+          path.write_text(source)
+          print('Registered iOS application for remote notifications at startup')
+          PY
+
       - name: Bundle Firebase iOS configuration
         run: |
           set -euo pipefail
