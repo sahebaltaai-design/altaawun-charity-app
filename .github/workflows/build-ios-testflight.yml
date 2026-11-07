@@ -1,4 +1,3 @@
-
 name: Build iOS IPA and TestFlight
 
 on:
@@ -25,7 +24,6 @@ jobs:
         run: |
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
           flutter pub get
-          sed -i '' 's/com.altaawun.altaawunCharityApp/com.altaawun.charity/g' ios/Runner.xcodeproj/project.pbxproj
 
       - name: Install signing credentials
         env:
@@ -33,31 +31,51 @@ jobs:
           CERT_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
-          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          echo "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          set -euo pipefail
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
 
-          security create-keychain -p "$CERT_PASSWORD" build.keychain
-          security set-keychain-settings -lut 21600 build.keychain
-          security unlock-keychain -p "$CERT_PASSWORD" build.keychain
+          KEYCHAIN_PATH="$RUNNER_TEMP/ios-build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security import "$RUNNER_TEMP/certificate.p12" \
-            -k build.keychain -P "$CERT_PASSWORD" \
-            -T /usr/bin/codesign
-          security list-keychains -d user -s build.keychain
-          security default-keychain -s build.keychain
+            -k "$KEYCHAIN_PATH" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple: \
-            -s -k "$CERT_PASSWORD" build.keychain
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" \
-            > "$RUNNER_TEMP/profile.plist"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
+          PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
+          test "$PROFILE_APP_ID" = "ARR89Z96X6.com.altaawun.charity"
           cp "$RUNNER_TEMP/profile.mobileprovision" \
             "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
-
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
-      - name: Configure export
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep 'Apple Distribution:'
+
+      - name: Configure Xcode signing and export
         run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("ios/Runner.xcodeproj/project.pbxproj")
+          content = path.read_text()
+          import re
+          content = re.sub(r'PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;', 'PRODUCT_BUNDLE_IDENTIFIER = com.altaawun.charity;', content)
+          content = re.sub(r'DEVELOPMENT_TEAM\s*=\s*[^;]+;', 'DEVELOPMENT_TEAM = ARR89Z96X6;', content)
+          content = re.sub(r'CODE_SIGN_STYLE\s*=\s*Automatic;', 'CODE_SIGN_STYLE = Manual;', content)
+          # Set signing at the target build-configuration level, preserving unrelated project settings.
+          content = content.replace('PRODUCT_BUNDLE_IDENTIFIER = com.altaawun.charity;', 
+              'PRODUCT_BUNDLE_IDENTIFIER = com.altaawun.charity;\n\t\t\t\tDEVELOPMENT_TEAM = ARR89Z96X6;\n\t\t\t\tCODE_SIGN_STYLE = Manual;\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "' + __import__('os').environ['PROFILE_UUID'] + '";')
+          path.write_text(content)
+          PY
           cat > ios/ExportOptions.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -66,25 +84,25 @@ jobs:
             <key>method</key><string>app-store-connect</string>
             <key>teamID</key><string>ARR89Z96X6</string>
             <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
             <key>provisioningProfiles</key>
             <dict>
-              <key>com.altaawun.charity</key>
-              <string>${PROFILE_UUID}</string>
+              <key>com.altaawun.charity</key><string>${PROFILE_UUID}</string>
             </dict>
           </dict>
           </plist>
           EOF
+          xcodebuild -list -project ios/Runner.xcodeproj
 
       - name: Build signed IPA
-        run: |
-          flutter build ipa --release \
-            --export-options-plist=ios/ExportOptions.plist
+        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
 
       - name: Save IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: altaawun-ios-signed-ipa
           path: build/ios/ipa/*.ipa
+          if-no-files-found: error
           retention-days: 7
 
       - name: Upload to TestFlight
@@ -93,9 +111,10 @@ jobs:
           APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
           APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
         run: |
+          set -euo pipefail
           mkdir -p "$HOME/.appstoreconnect/private_keys"
-          printf '%s\n' "$APPSTORE_PRIVATE_KEY" \
-            > "$HOME/.appstoreconnect/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+          printf '%s\n' "$APPSTORE_PRIVATE_KEY" > "$HOME/.appstoreconnect/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
           IPA_FILE=$(find build/ios/ipa -name '*.ipa' -print -quit)
           test -n "$IPA_FILE"
           xcrun altool --upload-app --type ios \
