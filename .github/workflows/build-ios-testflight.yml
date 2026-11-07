@@ -25,6 +25,28 @@ jobs:
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
           flutter pub get
 
+      - name: Configure iOS privacy usage descriptions
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          info_path = Path("ios/Runner/Info.plist")
+          with info_path.open("rb") as f:
+              info = plistlib.load(f)
+          info["NSMicrophoneUsageDescription"] = (
+              "يستخدم التطبيق الميكروفون للاستماع إلى أوامرك الصوتية والبحث بالصوت عند اختيارك هذه الميزة."
+          )
+          info["NSSpeechRecognitionUsageDescription"] = (
+              "يستخدم التطبيق التعرف على الكلام لتحويل أوامرك الصوتية إلى نص لتنفيذ البحث الصوتي."
+          )
+          with info_path.open("wb") as f:
+              plistlib.dump(info, f)
+          for key in ("NSMicrophoneUsageDescription", "NSSpeechRecognitionUsageDescription"):
+              assert info.get(key), f"Missing usage description: {key}"
+          print("iOS microphone and speech recognition purpose strings configured")
+          PY
+
       - name: Install signing credentials
         env:
           CERTIFICATE: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
