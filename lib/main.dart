@@ -955,8 +955,18 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     _openNotificationUrl(url);
   }
 
+  String _pushDiagnostic = 'جاري تسجيل الجهاز للإشعارات';
+  bool _pushSetupRunning = false;
+
   Future<void> _setupPush() async {
+    if (_pushSetupRunning) return;
+    _pushSetupRunning = true;
+    if (mounted) setState(() => _pushDiagnostic = 'جاري تهيئة Firebase');
     try {
+      // A failed Firebase startup must not permanently prevent push setup.
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
       final messaging = FirebaseMessaging.instance;
       final permission = await messaging.requestPermission(
         alert: true,
@@ -965,6 +975,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         provisional: false,
       );
       debugPrint('Notification authorization: ${permission.authorizationStatus}');
+      if (mounted) setState(() => _pushDiagnostic = 'صلاحية الإشعارات: ${permission.authorizationStatus}');
       if (defaultTargetPlatform == TargetPlatform.iOS) {
         // APNs registration is asynchronous on real iPhones. FCM token/topic
         // calls before the APNs token exists can fail and abort setup.
@@ -976,12 +987,14 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         }
         if (apnsToken == null) {
           debugPrint('APNs token unavailable; check iOS signing and push entitlement');
+          if (mounted) setState(() => _pushDiagnostic = 'تعذر تسجيل APNs. تحقق من اتصال الجهاز وأعد المحاولة.');
           return;
         }
+        if (mounted) setState(() => _pushDiagnostic = 'تم تسجيل APNs؛ جاري طلب FCM');
       }
       final token = await messaging.getToken();
-      if (mounted) setState(() => _fcmToken = token);
-      await _syncNotificationToneTopic();
+      if (mounted) setState(() { _fcmToken = token; _pushDiagnostic = token == null ? 'لم يُصدر Firebase رمز FCM' : 'تم تسجيل الجهاز بنجاح'; });
+      try { await _syncNotificationToneTopic(); } catch (error) { debugPrint('Push topic sync failed: $error'); }
       FirebaseMessaging.instance.onTokenRefresh.listen((value) {
         if (mounted) setState(() => _fcmToken = value);
       });
@@ -1004,6 +1017,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       });
     } catch (e) {
       debugPrint('FCM initialization: $e');
+      if (mounted) setState(() => _pushDiagnostic = 'فشل تسجيل الإشعارات: $e');
+    } finally {
+      _pushSetupRunning = false;
     }
   }
   DateTime? _lastCategoryFetch;
@@ -2129,6 +2145,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             subtitle: const Text('النغمات والاهتزاز'),
             trailing: const Icon(Icons.chevron_left),
             onTap: _showNotificationPreferences,
+          ),
+          ListTile(
+            leading: const Icon(Icons.refresh, color: green),
+            title: const Text('إعادة تسجيل إشعارات الآيفون'),
+            subtitle: Text(_pushDiagnostic),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _setupPush,
           ),
           ListTile(
             leading: const Icon(Icons.copy_all_outlined, color: green),
