@@ -1,0 +1,44 @@
+name: Build iOS (unsigned validation)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Generate missing iOS platform files
+        run: flutter create --platforms=ios --org com.altaawuncharity --project-name altaawun_charity_app .
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS without code signing
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned app for diagnostics
+        if: success()
+        run: |
+          cd build/ios/iphoneos
+          zip -r "$RUNNER_TEMP/altaawun-ios-unsigned-app.zip" Runner.app
+
+      - name: Upload unsigned build artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-ios-unsigned-app
+          path: ${{ runner.temp }}/altaawun-ios-unsigned-app.zip
+          retention-days: 7
