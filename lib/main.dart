@@ -13,6 +13,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -2128,6 +2129,46 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             subtitle: const Text('النغمات والاهتزاز'),
             trailing: const Icon(Icons.chevron_left),
             onTap: _showNotificationPreferences,
+          ),
+          ListTile(
+            leading: const Icon(Icons.copy_all_outlined, color: green),
+            title: const Text('نسخ رمز اختبار الإشعارات (FCM)'),
+            subtitle: const Text('لإرسال إشعار تجريبي لهذا الجهاز من Firebase'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () async {
+              try {
+                String? token = _fcmToken;
+                if (token == null || token.isEmpty) {
+                  if (defaultTargetPlatform == TargetPlatform.iOS) {
+                    final apns = await FirebaseMessaging.instance.getAPNSToken();
+                    if (apns == null) {
+                      if (settingsContext.mounted) {
+                        ScaffoldMessenger.of(settingsContext).showSnackBar(
+                          const SnackBar(content: Text('رمز APNs غير جاهز. افتح التطبيق وانتظر قليلًا ثم حاول مجددًا.')),
+                        );
+                      }
+                      return;
+                    }
+                  }
+                  token = await FirebaseMessaging.instance.getToken();
+                }
+                if (token == null || token.isEmpty) {
+                  throw StateError('FCM token unavailable');
+                }
+                await Clipboard.setData(ClipboardData(text: token));
+                if (settingsContext.mounted) {
+                  ScaffoldMessenger.of(settingsContext).showSnackBar(
+                    const SnackBar(content: Text('تم نسخ رمز FCM. الصقه في Firebase > Test on device. لا تشاركه علنًا.')),
+                  );
+                }
+              } catch (error) {
+                if (settingsContext.mounted) {
+                  ScaffoldMessenger.of(settingsContext).showSnackBar(
+                    SnackBar(content: Text('تعذر الحصول على رمز FCM: $error')),
+                  );
+                }
+              }
+            },
           ),
           ListTile(
             leading: const Icon(Icons.dashboard_customize, color: green),
