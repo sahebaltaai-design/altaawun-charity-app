@@ -47,6 +47,26 @@ jobs:
           print("iOS microphone and speech recognition purpose strings configured")
           PY
 
+      - name: Bundle Firebase iOS configuration
+        run: |
+          set -euo pipefail
+          test -f ios/Runner/GoogleService-Info.plist
+          plutil -lint ios/Runner/GoogleService-Info.plist
+          ruby <<'RUBY'
+          require 'xcodeproj'
+          project = Xcodeproj::Project.open('ios/Runner.xcodeproj')
+          runner = project.targets.find { |target| target.name == 'Runner' }
+          abort 'Runner target missing' unless runner
+          group = project.main_group.find_subpath('Runner', false)
+          abort 'Runner group missing' unless group
+          file = group.files.find { |reference| reference.path == 'GoogleService-Info.plist' }
+          file ||= group.new_file('GoogleService-Info.plist')
+          existing = runner.resources_build_phase.files_references
+          runner.resources_build_phase.add_file_reference(file, true) unless existing.include?(file)
+          project.save
+          puts 'Firebase config added to iOS Runner app resources'
+          RUBY
+
       - name: Install signing credentials
         env:
           CERTIFICATE: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
