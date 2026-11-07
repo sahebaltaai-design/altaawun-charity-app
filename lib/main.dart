@@ -13,12 +13,23 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  await _initializeNotificationChannels();
+  // iOS builds may not have Firebase configuration yet. Never block the UI
+  // from launching because an optional push service cannot initialize.
+  try {
+    await Firebase.initializeApp();
+  } catch (error) {
+    debugPrint('Firebase unavailable at startup: $error');
+  }
+  try {
+    await _initializeNotificationChannels();
+  } catch (error) {
+    debugPrint('Notification channels unavailable at startup: $error');
+  }
   runApp(const AltaawunApp());
 }
 
@@ -27,6 +38,8 @@ final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotifica
 final ValueNotifier<String?> notificationTapUrl = ValueNotifier<String?>(null);
 
 Future<void> _initializeNotificationChannels() async {
+  // These channels and the icon resource are Android-only.
+  if (defaultTargetPlatform != TargetPlatform.android) return;
   await _localNotifications.initialize(const InitializationSettings(
     android: AndroidInitializationSettings('@mipmap/ic_launcher'),
   ), onDidReceiveNotificationResponse: (response) {
