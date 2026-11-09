@@ -301,9 +301,10 @@ class _CheckoutContent extends StatefulWidget {
 class _CheckoutContentState extends State<_CheckoutContent> {
   late final WebViewController controller;
   bool _errorReported = false;
+  String? _destinationAfterBridge;
   static const _authStorage = FlutterSecureStorage();
   Future<void> _loadCheckoutWithAccount(String destination) async {
-    if (widget.allowSiteNavigation || !(Uri.tryParse(destination)?.path.toLowerCase().contains('/cart') ?? false)) {
+    if (widget.allowSiteNavigation || !RegExp(r'/(cart|checkout|order-pay)(/|$)').hasMatch(Uri.tryParse(destination)?.path.toLowerCase() ?? '')) {
       await controller.loadRequest(Uri.parse(destination));
       return;
     }
@@ -319,6 +320,9 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           final bridgeUrl = Uri.tryParse((payload['url'] ?? '').toString());
           if (bridgeUrl != null && bridgeUrl.scheme == 'https' &&
               (bridgeUrl.host == 'www.aytamaliraq.com' || bridgeUrl.host == 'aytamaliraq.com')) {
+            final targetPath = Uri.parse(destination).path.toLowerCase();
+            _destinationAfterBridge = targetPath.contains('/checkout') ||
+                    targetPath.contains('/order-pay') ? destination : null;
             await controller.loadRequest(bridgeUrl);
             return;
           }
@@ -384,6 +388,14 @@ class _CheckoutContentState extends State<_CheckoutContent> {
         },
         onPageFinished: (url) {
           final uri = Uri.tryParse(url);
+          final pending = _destinationAfterBridge;
+          if (pending != null && uri != null &&
+              (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com') &&
+              uri.path.toLowerCase() == '/cart/') {
+            _destinationAfterBridge = null;
+            controller.loadRequest(Uri.parse(pending));
+            return;
+          }
           if (uri != null && (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
             if (widget.allowSiteNavigation) {
               controller.runJavaScript(_slideDetailDisplayScript);
@@ -394,7 +406,8 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           }
         },
       ))
-      ..loadRequest(Uri.parse(widget.url));
+      ;
+    _loadCheckoutWithAccount(widget.url);
   }
   // Remove unrelated site chrome only while the embedded cart/checkout is open.
   // Keep WooCommerce forms, payment gateways, and order details untouched.
@@ -431,8 +444,38 @@ class _CheckoutContentState extends State<_CheckoutContent> {
       '.site-info, .footer-widgets, .ast-footer-wrap, .site-below-footer-wrap,',
       '.sidebar, #secondary, .widget-area, .related.products, .up-sells,',
       '.woocommerce-breadcrumb, .scroll-to-top, .back-to-top {display:none!important;}',
-      'body {overflow-x:hidden!important;}',
-      '.site-content, .content-area, main, .woocommerce {max-width:100%!important;}'
+      'html,body {overflow-x:hidden!important;max-width:100%!important;}',
+      'body.woocommerce-checkout .site-content, body.woocommerce-checkout main,',
+      'body.woocommerce-checkout .woocommerce, body.woocommerce-checkout form.checkout,',
+      'body.woocommerce-checkout .wc-block-checkout {box-sizing:border-box!important;max-width:100%!important;min-width:0!important;}',
+      'body.woocommerce-checkout input, body.woocommerce-checkout select,',
+      'body.woocommerce-checkout textarea {max-width:100%!important;box-sizing:border-box!important;}',
+      '@media(max-width:767px){body.woocommerce-checkout .col2-set .col-1,',
+      'body.woocommerce-checkout .col2-set .col-2, body.woocommerce-checkout #customer_details,',
+      'body.woocommerce-checkout #order_review {float:none!important;width:100%!important;max-width:100%!important;}}',
+      '.site-content, .content-area, main, .woocommerce {max-width:100%!important;}',
+      'body.woocommerce-checkout .site-header, body.woocommerce-checkout #masthead,',
+      'body.woocommerce-checkout #site-header, body.woocommerce-checkout .header-wrapper,',
+      'body.woocommerce-checkout .main-header, body.woocommerce-checkout .mobile-header,',
+      'body.woocommerce-checkout .ast-mobile-header-wrap, body.woocommerce-checkout .ast-primary-header-bar,',
+      'body.woocommerce-checkout .site-branding, body.woocommerce-checkout .main-navigation {display:none!important;}',
+      'body.woocommerce-checkout {font-size:16px!important;line-height:1.55!important;}',
+      'body.woocommerce-checkout .woocommerce form .form-row,',
+      'body.woocommerce-checkout .wc-block-components-text-input {position:relative!important;clear:both!important;min-width:0!important;}',
+      'body.woocommerce-checkout .woocommerce form .form-row label,',
+      'body.woocommerce-checkout .wc-block-components-text-input label {position:static!important;transform:none!important;display:block!important;',
+      'font-size:14px!important;line-height:1.5!important;height:auto!important;margin:0 0 6px!important;white-space:normal!important;}',
+      'body.woocommerce-checkout .woocommerce form .form-row input.input-text,',
+      'body.woocommerce-checkout .woocommerce form .form-row select,',
+      'body.woocommerce-checkout .woocommerce form .form-row textarea,',
+      'body.woocommerce-checkout .wc-block-components-text-input input {font-size:16px!important;line-height:1.5!important;',
+      'min-height:48px!important;height:auto!important;padding:12px!important;direction:auto!important;}',
+      'body.woocommerce-checkout .woocommerce form .form-row label .required {display:inline!important;}',
+      '@media(max-width:767px){body.woocommerce-checkout .woocommerce-billing-fields h3,',
+      'body.woocommerce-checkout .woocommerce-additional-fields h3,',
+      'body.woocommerce-checkout .wc-block-checkout__contact-fields h2 {font-size:22px!important;line-height:1.4!important;}',
+      'body.woocommerce-checkout .woocommerce form .form-row-first,',
+      'body.woocommerce-checkout .woocommerce form .form-row-last {width:100%!important;float:none!important;}}'
     ].join(' ');
     document.head.appendChild(style);
   })();''';

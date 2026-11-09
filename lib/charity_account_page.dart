@@ -17,16 +17,30 @@ class _AccountState extends State<CharityAccountPage> {
   final email = TextEditingController();
   final password = TextEditingController();
   final name = TextEditingController();
+  final lastName = TextEditingController();
+  final confirmPassword = TextEditingController();
+  final phone = TextEditingController();
+  final country = TextEditingController();
+  final state = TextEditingController();
+  final city = TextEditingController();
+  final address = TextEditingController();
+  final address2 = TextEditingController();
+  final postcode = TextEditingController();
   String? token, error;
   Map<String, dynamic>? user;
   List<dynamic> orders = [];
   String mode = 'login';
   bool busy = false;
+  bool editingProfile = false;
+  bool changingPassword = false;
+  final currentPassword = TextEditingController();
+  final newPassword = TextEditingController();
+  final repeatNewPassword = TextEditingController();
 
   @override
   void initState() { super.initState(); restore(); }
   @override
-  void dispose() { email.dispose(); password.dispose(); name.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); password.dispose(); name.dispose(); lastName.dispose(); confirmPassword.dispose(); phone.dispose(); country.dispose(); state.dispose(); city.dispose(); address.dispose(); address2.dispose(); postcode.dispose(); currentPassword.dispose(); newPassword.dispose(); repeatNewPassword.dispose(); super.dispose(); }
 
   Future<Map<String, dynamic>> api(String path, {Map<String, String>? body, String? bearer}) async {
     final headers = <String, String>{'Accept': 'application/json'};
@@ -65,18 +79,106 @@ class _AccountState extends State<CharityAccountPage> {
     finally { if (mounted) setState(() => busy = false); }
   }
 
+  // WooCommerce stores ISO 3166-1 alpha-2 country codes, not display names.
+  String get normalizedCountry {
+    final value = country.text.trim();
+    final normalized = value.toLowerCase();
+    const known = <String, String>{
+      'العراق': 'IQ', 'iraq': 'IQ', 'iq': 'IQ',
+      'الولايات المتحدة': 'US', 'الولايات المتحدة الأمريكية': 'US',
+      'united states': 'US', 'usa': 'US', 'us': 'US',
+      'المملكة المتحدة': 'GB', 'united kingdom': 'GB', 'gb': 'GB',
+    };
+    return known[normalized] ?? value.toUpperCase();
+  }
+
+  String accountValue(String key) {
+    final billing = user?['billing'];
+    final nested = billing is Map ? billing[key] : null;
+    return (nested ?? user?['billing_$key'] ?? user?[key] ?? '').toString();
+  }
+
+  Widget accountDetail(String label, String value) => Card(
+    child: ListTile(
+      title: Text(label),
+      subtitle: Text(value.trim().isEmpty ? 'غير مسجل' : value),
+    ),
+  );
+
+  void beginProfileEdit() {
+    name.text = accountValue('first_name');
+    lastName.text = accountValue('last_name');
+    phone.text = accountValue('phone');
+    country.text = accountValue('country') == 'IQ' ? 'العراق' : accountValue('country');
+    state.text = accountValue('state');
+    city.text = accountValue('city');
+    address.text = accountValue('address_1');
+    address2.text = accountValue('address_2');
+    postcode.text = accountValue('postcode');
+    setState(() { editingProfile = true; error = null; });
+  }
+
+  Future<void> saveProfile() async {
+    if (busy || token == null) return;
+    if ([name, lastName, phone, country, state, city, address].any((field) => field.text.trim().isEmpty) ||
+        !RegExp(r'^\+?[0-9 ()-]{7,20}$').hasMatch(phone.text.trim()) ||
+        !RegExp(r'^[A-Z]{2}$').hasMatch(normalizedCountry)) {
+      setState(() => error = 'تحقق من الاسم والهاتف والدولة والعنوان.');
+      return;
+    }
+    setState(() { busy = true; error = null; });
+    try {
+      final result = await api('profile', bearer: token, body: {
+        'first_name': name.text.trim(), 'last_name': lastName.text.trim(),
+        'billing_first_name': name.text.trim(), 'billing_last_name': lastName.text.trim(),
+        'billing_phone': phone.text.trim(), 'billing_country': normalizedCountry,
+        'billing_state': state.text.trim(), 'billing_city': city.text.trim(),
+        'billing_address_1': address.text.trim(), 'billing_address_2': address2.text.trim(),
+        'billing_postcode': postcode.text.trim(),
+      });
+      if (result['user'] is! Map) throw Exception('لم يؤكد الخادم الحفظ');
+      final refreshed = await api('me', bearer: token);
+      if (refreshed['user'] is! Map) throw Exception('تعذر التحقق من البيانات');
+      if (mounted) setState(() {
+        user = Map<String, dynamic>.from(refreshed['user'] as Map);
+        editingProfile = false;
+        error = 'تم حفظ البيانات والتحقق منها على الخادم';
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = 'تعذر الحفظ؛ قد يحتاج ووردبريس إلى دعم profile: ' + e.toString().replaceFirst('Exception: ', ''));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+
+  bool get validRegistration => [name, lastName, phone, country, state, city, address]
+      .every((field) => field.text.trim().isNotEmpty) &&
+      RegExp(r'^\+?[0-9 ()-]{7,20}$').hasMatch(phone.text.trim()) &&
+      password.text.length >= 12 && password.text == confirmPassword.text;
+
+  Widget registrationField(TextEditingController controller, String label,
+      {TextInputType keyboard = TextInputType.text, bool optional = false}) =>
+    Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller, keyboardType: keyboard,
+        decoration: InputDecoration(
+          labelText: optional ? '$label (اختياري)' : '$label *',
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
+
   Future<void> submit() async {
     if (busy) return;
     if (email.text.trim().isEmpty || (mode != 'forgot' && password.text.isEmpty) ||
-        (mode == 'register' && (name.text.trim().isEmpty || password.text.length < 12))) {
-      setState(() => error = 'أكمل البيانات المطلوبة؛ كلمة مرور التسجيل 12 حرفًا على الأقل');
+        (mode == 'register' && !validRegistration)) {
+      setState(() => error = 'أكمل جميع الحقول المطلوبة، وتأكد من رقم الهاتف وتطابق كلمتي المرور (12 حرفًا على الأقل)');
       return;
     }
     setState(() { busy = true; error = null; });
     try {
       final current = mode;
       final fields = current == 'forgot' ? {'email': email.text.trim()} :
-        current == 'register' ? {'email': email.text.trim(), 'password': password.text, 'name': name.text.trim()} :
+        current == 'register' ? {'email': email.text.trim(), 'password': password.text, 'name': '${name.text.trim()} ${lastName.text.trim()}', 'first_name': name.text.trim(), 'last_name': lastName.text.trim(), 'billing_first_name': name.text.trim(), 'billing_last_name': lastName.text.trim(), 'billing_phone': phone.text.trim(), 'billing_country': normalizedCountry, 'billing_state': state.text.trim(), 'billing_city': city.text.trim(), 'billing_address_1': address.text.trim(), 'billing_address_2': address2.text.trim(), 'billing_postcode': postcode.text.trim()} :
         {'login': email.text.trim(), 'password': password.text};
       final result = await api(current == 'forgot' ? 'forgot-password' : current, body: fields);
       if (!mounted) return;
@@ -94,6 +196,40 @@ class _AccountState extends State<CharityAccountPage> {
     } catch (e) {
       if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
     } finally { if (mounted) setState(() => busy = false); }
+  }
+
+  Future<void> changePassword() async {
+    if (busy || token == null) return;
+    if (currentPassword.text.isEmpty || newPassword.text.length < 12 ||
+        newPassword.text != repeatNewPassword.text ||
+        newPassword.text == currentPassword.text) {
+      setState(() => error = 'تأكد من كلمة المرور الحالية، وأن الجديدة مختلفة وتتكون من 12 حرفًا على الأقل، وأن التأكيد مطابق.');
+      return;
+    }
+    setState(() { busy = true; error = null; });
+    try {
+      final result = await api('change-password', bearer: token, body: {
+        'current_password': currentPassword.text,
+        'new_password': newPassword.text,
+      });
+      final nextToken = result['token']?.toString();
+      if (result['success'] != true || nextToken == null || nextToken.isEmpty) {
+        throw Exception('لم يؤكد الخادم تغيير كلمة المرور.');
+      }
+      await storage.write(key: 'altaawun_token', value: nextToken);
+      currentPassword.clear();
+      newPassword.clear();
+      repeatNewPassword.clear();
+      if (mounted) setState(() {
+        token = nextToken;
+        changingPassword = false;
+        error = 'تم تغيير كلمة المرور بنجاح.';
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = 'لم يتم تغيير كلمة المرور: ' + e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   Future<void> loadOrders() async {
@@ -136,6 +272,60 @@ class _AccountState extends State<CharityAccountPage> {
       textAlign: TextAlign.center, style: const TextStyle(color: Colors.deepOrange))),
     if (user != null) ...[
       Card(child: ListTile(title: const Text('البريد الإلكتروني'), subtitle: Text(user!['email']?.toString() ?? ''))),
+      const SizedBox(height: 12),
+      Row(children: [
+        const Expanded(child: Text('بيانات الاتصال والعنوان', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold))),
+        if (!editingProfile) TextButton.icon(onPressed: busy ? null : beginProfileEdit,
+          icon: const Icon(Icons.edit_outlined), label: const Text('تعديل')),
+      ]),
+      if (editingProfile) ...[
+        registrationField(name, 'الاسم الأول'),
+        registrationField(lastName, 'الاسم الأخير'),
+        registrationField(phone, 'رقم الهاتف', keyboard: TextInputType.phone),
+        registrationField(country, 'الدولة (العراق أو IQ)'),
+        registrationField(state, 'المحافظة / الولاية'),
+        registrationField(city, 'المدينة'),
+        registrationField(address, 'الشارع والعنوان'),
+        registrationField(address2, 'العنوان الإضافي', optional: true),
+        registrationField(postcode, 'الرمز البريدي', optional: true),
+        Row(children: [
+          Expanded(child: FilledButton(onPressed: busy ? null : saveProfile, child: const Text('حفظ التعديلات'))),
+          const SizedBox(width: 8),
+          OutlinedButton(onPressed: busy ? null : () => setState(() { editingProfile = false; error = null; }),
+            child: const Text('إلغاء')),
+        ]),
+      ] else ...[
+        accountDetail('الاسم الأول', accountValue('first_name')),
+        accountDetail('الاسم الأخير', accountValue('last_name')),
+        accountDetail('رقم الهاتف', accountValue('phone')),
+        accountDetail('الدولة', accountValue('country') == 'IQ' ? 'العراق' : accountValue('country')),
+        accountDetail('المحافظة / الولاية', accountValue('state')),
+        accountDetail('المدينة', accountValue('city')),
+        accountDetail('العنوان', accountValue('address_1')),
+        accountDetail('العنوان الإضافي', accountValue('address_2')),
+        accountDetail('الرمز البريدي', accountValue('postcode')),
+      ],
+      const SizedBox(height: 16),
+      Row(children: [
+        const Expanded(child: Text('أمان الحساب', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold))),
+        TextButton.icon(
+          onPressed: busy ? null : () => setState(() { changingPassword = !changingPassword; error = null; }),
+          icon: const Icon(Icons.lock_outline),
+          label: Text(changingPassword ? 'إلغاء' : 'تغيير كلمة المرور'),
+        ),
+      ]),
+      if (changingPassword) ...[
+        TextField(controller: currentPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'كلمة المرور الحالية', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: newPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة (12 حرفًا على الأقل)', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: repeatNewPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور الجديدة', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        FilledButton(onPressed: busy ? null : changePassword, child: const Text('حفظ كلمة المرور الجديدة')),
+      ],
       const SizedBox(height: 16),
       const Text('كفالاتي في السلة', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       Card(child: ListTile(
@@ -160,7 +350,17 @@ class _AccountState extends State<CharityAccountPage> {
         textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
       if (mode == 'register') ...[
-        TextField(controller: name, decoration: const InputDecoration(labelText: 'الاسم', border: OutlineInputBorder())),
+        registrationField(name, 'الاسم الأول'),
+        registrationField(lastName, 'الاسم الأخير'),
+        registrationField(phone, 'رقم الهاتف', keyboard: TextInputType.phone),
+        registrationField(country, 'الدولة (كتابة يدوية)'),
+        registrationField(state, 'المحافظة / الولاية (كتابة يدوية)'),
+        registrationField(city, 'المدينة / المنطقة (كتابة يدوية)'),
+        registrationField(address, 'الشارع والحي والعنوان التفصيلي'),
+        registrationField(address2, 'رقم الشقة أو الوحدة', optional: true),
+        registrationField(postcode, 'الرمز البريدي ZIP Code', optional: true),
+        const Text('يمكن كتابة العنوان يدويًا بالكامل. لا تكتب رمزًا بريديًا وهميًا إذا لم يكن متوفرًا في منطقتك.', style: TextStyle(fontSize: 12)),
+        const Text('تأكيد الهاتف عبر SMS يتطلب تفعيل خدمة التحقق على الخادم.', style: TextStyle(fontSize: 12)),
         const SizedBox(height: 12),
       ],
       TextField(controller: email, keyboardType: TextInputType.emailAddress,
@@ -169,6 +369,11 @@ class _AccountState extends State<CharityAccountPage> {
         const SizedBox(height: 12),
         TextField(controller: password, obscureText: true,
           decoration: const InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder())),
+      ],
+      if (mode == 'register') ...[
+        const SizedBox(height: 12),
+        TextField(controller: confirmPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور *', border: OutlineInputBorder())),
       ],
       const SizedBox(height: 16),
       FilledButton(onPressed: busy ? null : submit,
