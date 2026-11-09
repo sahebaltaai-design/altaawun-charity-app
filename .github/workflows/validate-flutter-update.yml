@@ -1,0 +1,21 @@
+name: Validate Flutter Update Alert
+on:
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/validate-flutter-update.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Analyze update service
+        run: flutter analyze lib/app_update_service.dart
+      - name: Validate WordPress PHP
+        run: php -l wordpress/altaawun-app-updates/altaawun-app-updates.php
