@@ -1727,7 +1727,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         fit: BoxFit.scaleDown,
         alignment: Alignment.center,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          _Emblem(size: 54),
+          _Emblem(size: 66),
           SizedBox(height: 3),
           Text('جمعية التعاون الخيرية', maxLines: 1,
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
