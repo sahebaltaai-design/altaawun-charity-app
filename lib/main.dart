@@ -1,4 +1,4 @@
-import 'package:upgrader/upgrader.dart';
+import 'app_update_service.dart';
 import 'charity_about_content.dart';
 import 'charity_voice_assistant.dart';
 import 'charity_account_page.dart';
@@ -81,10 +81,37 @@ class AltaawunApp extends StatefulWidget {
   State<AltaawunApp> createState() => _AltaawunAppState();
 }
 
-class _AltaawunAppState extends State<AltaawunApp> {
+class _AltaawunAppState extends State<AltaawunApp> with WidgetsBindingObserver {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  bool _checkingUpdate = false;
+
+  Future<void> _checkUpdate({bool manual = false}) async {
+    final context = _navigatorKey.currentContext;
+    if (!mounted || context == null || _checkingUpdate) return;
+    _checkingUpdate = true;
+    try {
+      await AppUpdateService.checkForUpdates(context, manual: manual);
+    } finally {
+      _checkingUpdate = false;
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkUpdate();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdate());
     _restoreTypography();
   }
 
@@ -117,6 +144,7 @@ class _AltaawunAppState extends State<AltaawunApp> {
         };
         final scale = size == 'small' ? 0.9 : size == 'large' ? 1.15 : 1.0;
         return MaterialApp(
+          navigatorKey: _navigatorKey,
           title: 'جمعية التعاون الخيرية',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
@@ -152,15 +180,7 @@ class _AltaawunAppState extends State<AltaawunApp> {
               child: child ?? const SizedBox(),
             ),
           ),
-          home: UpgradeAlert(
-            upgrader: Upgrader(
-              languageCode: 'ar',
-              durationUntilAlertAgain: const Duration(days: 1),
-            ),
-            showIgnore: false,
-            showLater: true,
-            child: const SplashScreen(),
-          ),
+          home: const SplashScreen(),
         );
       },
     ),
@@ -2199,6 +2219,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             subtitle: const Text('ترتيب الأقسام وحجم المربعات وإخفاؤها'),
             trailing: const Icon(Icons.chevron_left),
             onTap: _manageCategories,
+          ),
+          ListTile(
+            leading: const Icon(Icons.system_update_alt, color: green),
+            title: const Text('التحقق من تحديث التطبيق'),
+            subtitle: const Text('البحث عن أحدث إصدار متاح في المتجر'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => _checkUpdate(manual: true),
           ),
           const Divider(),
           const Padding(
