@@ -2225,7 +2225,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             title: const Text('التحقق من تحديث التطبيق'),
             subtitle: const Text('البحث عن أحدث إصدار متاح في المتجر'),
             trailing: const Icon(Icons.chevron_left),
-            onTap: () => _checkUpdate(manual: true),
+            onTap: () => AppUpdateService.checkForUpdates(settingsContext, manual: true),
           ),
           const Divider(),
           FutureBuilder(
