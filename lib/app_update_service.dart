@@ -75,6 +75,10 @@ class AppUpdateService {
       final mustUpdate = payload['required'] == true;
       final storeUrl = _storeUrl(payload['url']?.toString(), package.packageName,
           targetPlatform);
+      if (storeUrl == null) {
+        if (manual) _message(context, 'رابط التحديث غير متاح بعد.');
+        return;
+      }
       final shouldOpen = await showDialog<bool>(
         context: context,
         barrierDismissible: !mustUpdate,
