@@ -301,6 +301,7 @@ class _CheckoutContent extends StatefulWidget {
 class _CheckoutContentState extends State<_CheckoutContent> {
   late final WebViewController controller;
   bool _errorReported = false;
+  String? _destinationAfterBridge;
   static const _authStorage = FlutterSecureStorage();
   Future<void> _loadCheckoutWithAccount(String destination) async {
     if (widget.allowSiteNavigation || !RegExp(r'/(cart|checkout|order-pay)(/|$)').hasMatch(Uri.tryParse(destination)?.path.toLowerCase() ?? '')) {
@@ -319,6 +320,11 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           final bridgeUrl = Uri.tryParse((payload['url'] ?? '').toString());
           if (bridgeUrl != null && bridgeUrl.scheme == 'https' &&
               (bridgeUrl.host == 'www.aytamaliraq.com' || bridgeUrl.host == 'aytamaliraq.com')) {
+            // The WordPress bridge establishes WebView cookies and redirects to
+            // /cart/. Continue to the originally requested checkout afterwards.
+            final targetPath = Uri.parse(destination).path.toLowerCase();
+            _destinationAfterBridge = targetPath.contains('/checkout') ||
+                    targetPath.contains('/order-pay') ? destination : null;
             await controller.loadRequest(bridgeUrl);
             return;
           }
@@ -384,6 +390,1961 @@ class _CheckoutContentState extends State<_CheckoutContent> {
         },
         onPageFinished: (url) {
           final uri = Uri.tryParse(url);
+          final pending = _destinationAfterBridge;
+          if (pending != null && uri != null &&
+              (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com') &&
+              uri.path.toLowerCase().replaceAll(RegExp(r'/+
+          if (uri != null && (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
+            if (widget.allowSiteNavigation) {
+              controller.runJavaScript(_slideDetailDisplayScript);
+            } else {
+              controller.runJavaScript(_cartWatcherScript);
+              controller.runJavaScript(_appCheckoutDisplayScript);
+            }
+          }
+        },
+      ))
+      ;
+    _loadCheckoutWithAccount(widget.url);
+  }
+  // Remove unrelated site chrome only while the embedded cart/checkout is open.
+  // Keep WooCommerce forms, payment gateways, and order details untouched.
+  static const _slideDetailDisplayScript = r'''(function(){
+    if(document.getElementById('altaawun-slide-detail-style')) return;
+    var style=document.createElement('style');
+    style.id='altaawun-slide-detail-style';
+    style.textContent=[
+      'header, footer, nav, aside, #masthead, #colophon, #secondary,',
+      '.site-header, .site-footer, .elementor-location-header, .elementor-location-footer,',
+      '.main-navigation, .sidebar, .widget-area, .breadcrumbs, .breadcrumb,',
+      '.related-posts, .related, .comments-area, #comments, .social-share,',
+      '.share-buttons, .footer-widgets, .footer-bottom, .scroll-to-top,',
+      '.back-to-top, .site-info {display:none!important;}',
+      'body {margin:0!important;padding:0!important;overflow-x:hidden!important;}',
+      'main, article, .entry-content, .site-content, .content-area,',
+      '.elementor-location-single {max-width:100%!important;width:100%!important;}',
+      'img, video, iframe {max-width:100%!important;}'
+    ].join(' ');
+    document.head.appendChild(style);
+  })();''';
+
+  static const _appCheckoutDisplayScript = r'''(function(){
+    var path = location.pathname.toLowerCase();
+    if (!(path.includes('/cart') || path.includes('/checkout') || path.includes('/order-pay'))) return;
+    if (document.getElementById('altaawun-app-checkout-style')) return;
+    var style = document.createElement('style');
+    style.id = 'altaawun-app-checkout-style';
+    style.textContent = [
+      'header.site-header, #masthead, .site-header, .elementor-location-header,',
+      'footer, footer.site-footer, #colophon, .site-footer, .elementor-location-footer,',
+      '#footer, .footer, .footer-area, .footer-main, .footer-bottom, .site-footer-wrap,',
+      '.elementor-widget-social-icons, .social-icons, .footer-social,',
+      '.site-info, .footer-widgets, .ast-footer-wrap, .site-below-footer-wrap,',
+      '.sidebar, #secondary, .widget-area, .related.products, .up-sells,',
+      '.woocommerce-breadcrumb, .scroll-to-top, .back-to-top {display:none!important;}',
+      'body {overflow-x:hidden!important;}',
+      '.site-content, .content-area, main, .woocommerce {max-width:100%!important;}'
+    ].join(' ');
+    document.head.appendChild(style);
+  })();''';
+
+  static const _cartWatcherScript = r'''(function(){
+  if(window.__altaawunCartInstalled) return;
+  window.__altaawunCartInstalled = true;
+  var last = -1, pending;
+  function parse(doc){
+    var fields = Array.from(doc.querySelectorAll(
+      '.woocommerce-cart-form input.qty, .wc-block-cart-items input.wc-block-components-quantity-selector__input, .wc-block-cart-items input[type="number"]'));
+    if(fields.length) return fields.reduce(function(sum,el){return sum+(parseInt(el.value,10)||0);},0);
+    var empty = doc.querySelector('.cart-empty, .wc-block-cart__empty-cart__title, .wc-block-cart__empty-cart');
+    if(empty) return 0;
+    var rows = doc.querySelectorAll('.woocommerce-cart-form .cart_item, .wc-block-cart-items__row');
+    if(rows.length) return rows.length;
+    return null;
+  }
+  function report(n){
+    if(n !== null && n >= 0 && n !== last && window.AltaawunCart){
+      last=n; window.AltaawunCart.postMessage(String(n));
+    }
+  }
+  function refresh(){
+    clearTimeout(pending);
+    pending=setTimeout(function(){
+      var current = parse(document);
+      if(/\/cart\/?($|[?#])/.test(location.pathname) && current !== null){report(current);return;}
+      fetch('/cart/?altaawun_cart_count=1',{credentials:'same-origin',cache:'no-store'})
+        .then(function(r){if(!r.ok)throw Error('cart');return r.text();})
+        .then(function(html){report(parse(new DOMParser().parseFromString(html,'text/html')));})
+        .catch(function(){});
+    },600);
+  }
+  refresh();
+  if(window.jQuery){
+    window.jQuery(document.body).on('added_to_cart removed_from_cart wc_fragments_refreshed updated_wc_div updated_cart_totals',refresh);
+  }
+  document.addEventListener('change',function(e){if(e.target.matches('input.qty'))refresh();});
+  new MutationObserver(function(m){
+    if(m.some(function(x){return x.addedNodes.length || x.removedNodes.length;}))refresh();
+  }).observe(document.body,{childList:true,subtree:true});
+})();''';
+  @override
+  void didUpdateWidget(covariant _CheckoutContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _loadCheckoutWithAccount(widget.url);
+    }
+  }
+  @override
+  Widget build(BuildContext context) => WebViewWidget(controller: controller);
+}
+
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: LayoutBuilder(builder: (context, constraints) => Stack(
+      fit: StackFit.expand,
+      children: [
+        const ColoredBox(color: deepGreen),
+        // Preserve the full artwork and logo without stretching or cropping
+        // on phones with different aspect ratios.
+        Image.asset(
+          'assets/welcome_background-2.png',
+          fit: BoxFit.contain,
+          alignment: Alignment.center,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        ),
+        Positioned(
+          left: 16,
+          right: 16,
+          bottom: 16,
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 64,
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const CharityShell())),
+                    icon: const Icon(Icons.login, size: 27),
+                    label: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('الدخول إلى التطبيق',
+                        style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF00652A),
+                      foregroundColor: Colors.white,
+                      elevation: 6,
+                      side: const BorderSide(color: Color(0xFFFFD66A), width: 2.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(36)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF003B1D),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFFFD66A), width: 1),
+                  ),
+                  child: const Text(
+                    'معًا .. نصنع لهم مستقبلًا أفضل',
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    )),
+  );
+}
+
+class _SchoolIllustration extends StatelessWidget {
+  const _SchoolIllustration();
+  @override
+  Widget build(BuildContext context) => Stack(children: [
+    Positioned.fill(child: CustomPaint(painter: _SchoolPainter())),
+    const Positioned(left: 15, bottom: 22,
+      child: Icon(Icons.park, color: Color(0xFF318D45), size: 86)),
+    const Positioned(right: 8, bottom: 20,
+      child: Icon(Icons.park, color: Color(0xFF318D45), size: 96)),
+    const Positioned(left: 55, right: 55, bottom: 8,
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+        Icon(Icons.backpack, color: Color(0xFF194A75), size: 48),
+        Icon(Icons.backpack, color: Color(0xFF194A75), size: 52),
+        Icon(Icons.backpack, color: Color(0xFF194A75), size: 46),
+        Icon(Icons.backpack, color: Color(0xFF194A75), size: 50),
+      ])),
+  ]);
+}
+
+class _SchoolPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final wall = Paint()..color = const Color(0xFFF0D7AE);
+    final outline = Paint()..color = const Color(0xFFCAAC81);
+    canvas.drawRect(Rect.fromLTWH(w * .10, h * .20, w * .80, h * .52), wall);
+    canvas.drawRect(Rect.fromLTWH(w * .28, h * .11, w * .44, h * .61), wall);
+    canvas.drawRect(Rect.fromLTWH(w * .26, h * .10, w * .48, h * .035), outline);
+    for (var i = 0; i < 7; i++) {
+      final x = w * (.16 + i * .115);
+      canvas.drawRect(Rect.fromLTWH(x, h * .33, w * .062, h * .13),
+        Paint()..color = const Color(0xFF74B5D0));
+    }
+    canvas.drawRect(Rect.fromLTWH(w * .44, h * .43, w * .12, h * .29),
+      Paint()..color = const Color(0xFF5E8B96));
+    canvas.drawRect(Rect.fromLTWH(w * .47, h * .17, w * .06, h * .09),
+      Paint()..color = red);
+    canvas.drawRect(Rect.fromLTWH(w * .08, h * .71, w * .84, h * .025),
+      Paint()..color = const Color(0xFFB9C49C));
+  }
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _Emblem extends StatelessWidget {
+  final double size;
+  const _Emblem({this.size = 48});
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: size,
+    height: size,
+    child: Image.asset(
+      'assets/png_style_emblem_the_same_arabic_logo_arched_em.png',
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) =>
+          Icon(Icons.volunteer_activism, size: size * .7, color: red),
+    ),
+  );
+}
+
+class CharityShell extends StatefulWidget {
+  const CharityShell({super.key});
+  @override
+  State<CharityShell> createState() => _CharityShellState();
+}
+
+class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver {
+  List<Map<String, dynamic>> _appSlides = [];
+  int _slideIndex = 0;
+  int _slideSeconds = 5;
+  bool _slideAutoplay = true;
+  Timer? _slideTimer;
+
+  Future<void> _loadAppSlides() async {
+    try {
+      final response = await http.get(Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun/v1/slides')).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) return;
+      final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final slides = (data['slides'] as List? ?? []).whereType<Map<String, dynamic>>().where((e) => (e['image'] ?? '').toString().startsWith('https://')).toList();
+      if (!mounted) return;
+      setState(() {
+        _appSlides = slides;
+        _slideIndex = 0;
+        _slideSeconds = ((data['interval'] as num?)?.toInt() ?? 5).clamp(2, 30);
+        _slideAutoplay = data['autoplay'] != false;
+      });
+      _restartSlideTimer();
+    } catch (_) { /* Retain the existing offline banner. */ }
+  }
+
+  void _restartSlideTimer() {
+    _slideTimer?.cancel();
+    if (_appSlides.length < 2 || !_slideAutoplay) return;
+    _slideTimer = Timer.periodic(Duration(seconds: _slideSeconds), (_) {
+      if (mounted && page == 0) setState(() => _slideIndex = (_slideIndex + 1) % _appSlides.length);
+    });
+  }
+
+  void _advanceSlide(int direction) {
+    if (_appSlides.isEmpty) return;
+    setState(() => _slideIndex = (_slideIndex + direction + _appSlides.length) % _appSlides.length);
+    _restartSlideTimer();
+  }
+
+  Widget _remoteSlider() {
+    final slide = _appSlides[_slideIndex];
+    final url = (slide['url'] ?? '').toString();
+    return Column(children: [
+      SizedBox(height: 240, child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(fit: StackFit.expand, children: [
+          Image.network(slide['image'].toString(), fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFFE7F2EA))),
+          const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+            begin: Alignment.centerLeft, end: Alignment.centerRight,
+            colors: [Colors.transparent, Color(0xD9004C29)]))),
+          Positioned(right: 20, top: 24, left: 80, child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text((slide['title'] ?? '').toString(), maxLines: 2,
+                style: const TextStyle(color: Colors.white, fontSize: 25, fontWeight: FontWeight.w900)),
+              Text((slide['subtitle'] ?? '').toString(), maxLines: 2,
+                style: const TextStyle(color: Colors.white, fontSize: 16)),
+            ])),
+          if (url.startsWith('https://')) Positioned(right: 18, bottom: 16,
+            child: FilledButton(onPressed: () => _openSlideUrl(url),
+              child: Text((slide['button'] ?? 'المزيد').toString()))),
+          if (_appSlides.length > 1) ...[
+            Positioned(left: 4, top: 85, child: IconButton.filledTonal(
+              onPressed: () => _advanceSlide(-1), icon: const Icon(Icons.chevron_left))),
+            Positioned(right: 4, top: 85, child: IconButton.filledTonal(
+              onPressed: () => _advanceSlide(1), icon: const Icon(Icons.chevron_right))),
+          ],
+        ]),
+      )),
+      if (_appSlides.length > 1) Padding(padding: const EdgeInsets.only(top: 8),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          for (var i = 0; i < _appSlides.length; i++)
+            Container(margin: const EdgeInsets.symmetric(horizontal: 3), width: i == _slideIndex ? 20 : 7,
+              height: 7, decoration: BoxDecoration(color: i == _slideIndex ? green : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(8))),
+        ])),
+    ]);
+  }
+
+  int? _cartCount;
+  int _cartRefreshKey = 0;
+  String? _fcmToken;
+  String _notificationTone = 'urgent';
+  bool _notificationVibration = true;
+  String _homeTileSize = 'medium';
+
+  Future<void> _showForegroundNotification(RemoteMessage message) async {
+    final tone = const ['urgent', 'news', 'soft', 'default'].contains(_notificationTone)
+        ? _notificationTone : 'default';
+    final channelId = _notificationChannelPrefix + tone + (_notificationVibration ? '_vibrate' : '_silent');
+    await _localNotifications.show(
+      message.messageId?.hashCode ?? DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      message.notification?.title ?? 'جمعية التعاون الخيرية',
+      message.notification?.body ?? 'لديك إشعار جديد',
+      NotificationDetails(android: AndroidNotificationDetails(
+        channelId, 'إشعارات الجمعية',
+        importance: Importance.high, priority: Priority.high,
+        playSound: true,
+        sound: tone == 'default' ? null : RawResourceAndroidNotificationSound('altaawun_' + tone),
+        enableVibration: _notificationVibration,
+      )),
+      payload: (message.data['url'] ?? message.data['link'] ?? '').toString(),
+    );
+  }
+
+  Future<void> _syncNotificationToneTopic() async {
+    final tone = const ['urgent', 'news', 'soft', 'default'].contains(_notificationTone)
+        ? _notificationTone : 'default';
+    final desired = 'altaawun_tone_' + tone + (_notificationVibration ? '_vibrate' : '_silent');
+    final messaging = FirebaseMessaging.instance;
+    // Remove legacy broadcasts to prevent duplicate notifications.
+    await messaging.subscribeToTopic(desired);
+    for (final candidate in const ['urgent', 'news', 'soft', 'default']) {
+      for (final mode in const ['_vibrate', '_silent']) {
+        final topic = 'altaawun_tone_' + candidate + mode;
+        if (topic != desired) await messaging.unsubscribeFromTopic(topic);
+      }
+    }
+    await messaging.unsubscribeFromTopic('altaawun_updates');
+  }
+
+  Future<void> _loadNotificationPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _notificationTone = prefs.getString('notification_tone') ?? 'urgent';
+      _notificationVibration = prefs.getBool('notification_vibration') ?? true;
+    });
+  }
+
+  Future<void> _showFontPreferences() async {
+    String font = selectedAppFont.value;
+    String size = selectedAppFontSize.value;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, refresh) => AlertDialog(
+          title: const Text('نوع الخط وحجمه'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              for (final option in const ['Tajawal', 'Cairo', 'Almarai', 'Amiri'])
+                RadioListTile<String>(
+                  title: Text(option),
+                  value: option,
+                  groupValue: font,
+                  onChanged: (value) => refresh(() => font = value ?? 'Tajawal'),
+                ),
+              const Divider(),
+              const Text('حجم الخط'),
+              for (final option in const [('small', 'صغير'), ('medium', 'متوسط'), ('large', 'كبير')])
+                RadioListTile<String>(
+                  title: Text(option.$2),
+                  value: option.$1,
+                  groupValue: size,
+                  onChanged: (value) => refresh(() => size = value ?? 'medium'),
+                ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+            FilledButton(
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setString('app_font', font);
+                await prefs.setString('app_font_size', size);
+                selectedAppFont.value = font;
+                selectedAppFontSize.value = size;
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              },
+              child: const Text('حفظ'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showNotificationPreferences() async {
+    String selected = _notificationTone;
+    bool vibration = _notificationVibration;
+    final preview = AudioPlayer();
+    String? playing;
+    try {
+      await showDialog<void>(context: context, builder: (dialogContext) =>
+        StatefulBuilder(builder: (context, update) => AlertDialog(
+          title: const Text('إعدادات الإشعارات'),
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('استمع إلى النغمة قبل اختيارها وحفظها.'),
+            for (final option in const [
+              ('urgent', 'تنبيه الأخبار العاجلة'),
+              ('news', 'نغمة الأخبار'),
+              ('soft', 'نغمة هادئة'),
+              ('default', 'النغمة الافتراضية (معاينة تقريبية)'),
+            ]) Row(children: [
+              Expanded(child: RadioListTile<String>(
+                contentPadding: EdgeInsets.zero,
+                title: Text(option.$2, style: const TextStyle(fontSize: 13)),
+                value: option.$1, groupValue: selected,
+                onChanged: (value) => update(() => selected = value ?? 'urgent'),
+              )),
+              IconButton(
+                tooltip: 'استماع',
+                icon: const Icon(Icons.play_circle_outline),
+                onPressed: () async {
+                  await preview.stop();
+                  await preview.play(AssetSource('tones/${option.$1}.wav'));
+                  update(() => playing = option.$1);
+                },
+              ),
+              IconButton(
+                tooltip: 'إيقاف',
+                icon: const Icon(Icons.stop_circle_outlined),
+                onPressed: playing == option.$1 ? () async {
+                  await preview.stop();
+                  update(() => playing = null);
+                } : null,
+              ),
+            ]),
+            SwitchListTile(title: const Text('الاهتزاز'), value: vibration,
+              onChanged: (value) => update(() => vibration = value)),
+            const Text('تُطبّق النغمة المختارة أثناء فتح التطبيق. إشعارات الخلفية تعتمد على قناة Android وإعدادات Firebase.',
+              style: TextStyle(fontSize: 12)),
+          ])),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('إلغاء')),
+            FilledButton(onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('notification_tone', selected);
+              await prefs.setBool('notification_vibration', vibration);
+              if (!mounted) return;
+              setState(() { _notificationTone = selected; _notificationVibration = vibration; });
+              try { await _syncNotificationToneTopic(); } catch (e) { debugPrint('Tone topic sync: $e'); }
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            }, child: const Text('حفظ')),
+          ],
+        )));
+    } finally {
+      await preview.stop();
+      await preview.dispose();
+    }
+  }
+
+  bool _validNewsUrl(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null && uri.scheme == 'https' &&
+        (uri.host == 'aytamaliraq.com' || uri.host == 'www.aytamaliraq.com');
+  }
+
+  void _openNotificationNews(RemoteMessage message) {
+    final url = (message.data['url'] ?? message.data['link'] ?? '').toString();
+    _openNotificationUrl(url);
+  }
+
+  void _openNotificationUrl(String url) {
+    if (!_validNewsUrl(url) || !mounted) return;
+    setState(() {
+      checkoutUrl = url;
+      selectedItem = null;
+      wpSelectedCategory = null;
+      page = 4;
+    });
+  }
+
+  // Open a slider destination as its actual content, not the news index.
+  // WordPress posts use the native detail view; other site pages stay in-app.
+  Future<void> _openSlideUrl(String url) async {
+    final input = url.trim();
+    final original = Uri.tryParse(input.startsWith('www.') ? 'https://$input' : input);
+    if (original == null || !['http', 'https'].contains(original.scheme) ||
+        original.host.isEmpty || !mounted) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('رابط الشريحة غير صالح. يرجى تصحيحه من إعدادات السلايدر.')));
+      return;
+    }
+    final isCharitySite = ['aytamaliraq.com', 'www.aytamaliraq.com'].contains(original.host.toLowerCase());
+    final cleanParams = Map<String, String>.from(original.queryParameters)
+      ..remove('preview') ..remove('preview_id') ..remove('preview_nonce');
+    final uri = original.replace(scheme: 'https', queryParameters: cleanParams.isEmpty ? null : cleanParams);
+    if (!isCharitySite) {
+      setState(() { selectedItem = null; wpSelectedCategory = null; checkoutUrl = uri.toString(); _isSlideDestination = true; });
+      return;
+    }
+    final segments = uri.pathSegments.where((part) => part.isNotEmpty).toList();
+    final slug = segments.isEmpty ? '' : segments.last;
+    final id = int.tryParse(uri.queryParameters['p'] ?? uri.queryParameters['page_id'] ?? original.queryParameters['preview_id'] ?? '');
+    // Resolve legacy /index.php?p=123 and modern permalinks into native content.
+    for (final type in const ['posts', 'pages']) {
+      try {
+        final endpoint = Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/$type');
+        final target = id != null && id > 0
+            ? endpoint.replace(path: '${endpoint.path}/$id', queryParameters: {'_embed': '1'})
+            : endpoint.replace(queryParameters: {'slug': slug, '_embed': '1'});
+        if (id == null && (slug.isEmpty || slug == 'index.php')) continue;
+        final response = await http.get(target).timeout(const Duration(seconds: 12));
+        if (response.statusCode != 200) continue;
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        final Map<String, dynamic>? item = data is Map
+            ? Map<String, dynamic>.from(data)
+            : data is List && data.isNotEmpty && data.first is Map
+                ? Map<String, dynamic>.from(data.first as Map) : null;
+        if (item != null && mounted) {
+          _openNewsPost(item);
+          return;
+        }
+      } catch (error) {
+        debugPrint('Slider $type lookup: $error');
+      }
+    }
+    if (!mounted) return;
+    // Custom WordPress content types may not be exposed by the standard
+    // posts/pages endpoints. Show the linked content in a focused in-app view.
+    setState(() {
+      selectedItem = null;
+      wpSelectedCategory = null;
+      checkoutUrl = uri.toString();
+      _isSlideDestination = true;
+    });
+  }
+
+  void _onLocalNotificationTap() {
+    final url = notificationTapUrl.value;
+    if (url == null || url.isEmpty) return;
+    notificationTapUrl.value = null;
+    _openNotificationUrl(url);
+  }
+
+  String _pushDiagnostic = 'جاري تسجيل الجهاز للإشعارات';
+  bool _pushSetupRunning = false;
+
+  Future<void> _setupPush() async {
+    if (_pushSetupRunning) return;
+    _pushSetupRunning = true;
+    if (mounted) setState(() => _pushDiagnostic = 'جاري تهيئة Firebase');
+    try {
+      // A failed Firebase startup must not permanently prevent push setup.
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp();
+      }
+      final messaging = FirebaseMessaging.instance;
+      final permission = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+        provisional: false,
+      );
+      debugPrint('Notification authorization: ${permission.authorizationStatus}');
+      if (mounted) setState(() => _pushDiagnostic = 'صلاحية الإشعارات: ${permission.authorizationStatus}');
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        // APNs registration is asynchronous on real iPhones. FCM token/topic
+        // calls before the APNs token exists can fail and abort setup.
+        String? apnsToken;
+        for (var attempt = 0; attempt < 12; attempt++) {
+          apnsToken = await messaging.getAPNSToken();
+          if (apnsToken != null) break;
+          await Future<void>.delayed(const Duration(seconds: 2));
+        }
+        if (apnsToken == null) {
+          debugPrint('APNs token unavailable; check iOS signing and push entitlement');
+          if (mounted) setState(() => _pushDiagnostic = 'تعذر تسجيل APNs. تحقق من اتصال الجهاز وأعد المحاولة.');
+          return;
+        }
+        if (mounted) setState(() => _pushDiagnostic = 'تم تسجيل APNs؛ جاري طلب FCM');
+      }
+      final token = await messaging.getToken();
+      if (mounted) setState(() { _fcmToken = token; _pushDiagnostic = token == null ? 'لم يُصدر Firebase رمز FCM' : 'تم تسجيل الجهاز بنجاح'; });
+      try { await _syncNotificationToneTopic(); } catch (error) { debugPrint('Push topic sync failed: $error'); }
+      FirebaseMessaging.instance.onTokenRefresh.listen((value) {
+        if (mounted) setState(() => _fcmToken = value);
+      });
+      FirebaseMessaging.onMessageOpenedApp.listen(_openNotificationNews);
+      final initial = await messaging.getInitialMessage();
+      if (initial != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _openNotificationNews(initial));
+      }
+      FirebaseMessaging.onMessage.listen((message) {
+        if (!mounted) return;
+        _showForegroundNotification(message);
+        final url = (message.data['url'] ?? '').toString();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(message.notification?.title ?? 'إشعار جديد من الجمعية'),
+          action: _validNewsUrl(url) ? SnackBarAction(
+            label: 'قراءة الخبر',
+            onPressed: () => _openNotificationNews(message),
+          ) : null,
+        ));
+      });
+    } catch (e) {
+      debugPrint('FCM initialization: $e');
+      if (mounted) setState(() => _pushDiagnostic = 'فشل تسجيل الإشعارات: $e');
+    } finally {
+      _pushSetupRunning = false;
+    }
+  }
+  DateTime? _lastCategoryFetch;
+  static const _refreshInterval = Duration(hours: 6);
+  bool _fetchingCategories = false;
+  int page = 0;
+  final names = const ['الرئيسية', 'كفالة الأيتام', 'المدرسة والتعليم', 'التبرعات والمساهمات', 'الأخبار والأنشطة', 'الصور والفيديوهات', 'عن الجمعية', 'حسابي'];
+  static const _defaultCategoryOrder = [2, 1, 3, 5, 4, 6];
+  static const _categoryLabels = {
+    2: 'المدرسة والتعليم', 1: 'كفالة الأيتام',
+    3: 'التبرعات والمساهمات', 5: 'الصور والفيديوهات',
+    4: 'الأخبار والأنشطة', 6: 'عن الجمعية',
+  };
+  static const _categoryIcons = {
+    2: Icons.school, 1: Icons.groups, 3: Icons.volunteer_activism,
+    5: Icons.photo_library, 4: Icons.article, 6: Icons.menu_book,
+  };
+  List<int> categoryOrder = List.of(_defaultCategoryOrder);
+  Set<int> hiddenCategories = {};
+  Map<int, String> customCategories = {};
+  int? customPage;
+  List<Map<String, dynamic>> wpCategories = [];
+  List<String> wpCategoryOrder = [];
+  Set<String> wpHiddenCategories = {};
+  Map<String, int> wpCategoryColors = {};
+  Map<String, int> wpCategoryTextColors = {};
+  Map<String, int> wpCategoryIconColors = {};
+  Map<String, dynamic> remoteTileSettings = {};
+  static const _remoteIcons = <String, IconData>{'school': Icons.school, 'groups': Icons.groups, 'favorite': Icons.favorite, 'volunteer_activism': Icons.volunteer_activism, 'article': Icons.article, 'photo_library': Icons.photo_library, 'menu_book': Icons.menu_book, 'home': Icons.home, 'campaign': Icons.campaign, 'public': Icons.public, 'local_library': Icons.local_library, 'auto_stories': Icons.auto_stories};
+  Map<String,dynamic> _remoteTile(Map<String,dynamic> category) { final value=remoteTileSettings[_wpKey(category)]; return value is Map ? Map<String,dynamic>.from(value) : {}; }
+  Color? _remoteColor(dynamic value) { if(value is! String || value.length!=7 || !value.startsWith('#')) return null; final digits=int.tryParse(value.substring(1),radix:16); return digits==null ? null : Color(0xFF000000 | digits); }
+  double _remoteSize(dynamic value,double fallback,double min,double max) => value is num ? value.toDouble().clamp(min,max) : fallback;
+  Widget _remoteTileIcon(Map<String,dynamic> category,double fallback) {
+    final tile=_remoteTile(category); final size=_remoteSize(tile['icon_size'],fallback,24,100);
+    final color=Color(wpCategoryIconColors[_wpKey(category)] ?? (_remoteColor(tile['icon_color'])?.value ?? 0xFF00642D));
+    final url=tile['image_url'];
+    final fallbackIcon=Icon(_remoteIcons[tile['icon']] ?? _categoryIcon(category['name'].toString()),size:size,color:color);
+    if(url is String && url.startsWith('https://')) return Image.network(url,width:size,height:size,fit:BoxFit.contain,errorBuilder:(_,__,___)=>fallbackIcon);
+    return fallbackIcon;
+  }
+  Future<void> _loadRemoteTiles() async {
+    try {
+      final response=await http.get(Uri.parse('$_site/wp-json/altaawun/v1/tiles')).timeout(const Duration(seconds:12));
+      if(response.statusCode!=200)return;
+      final decoded=jsonDecode(utf8.decode(response.bodyBytes));
+      if(decoded is! Map)return;
+      final settings=Map<String,dynamic>.from(decoded);
+      final prefs=await SharedPreferences.getInstance();
+      await prefs.setString('altaawun_remote_tiles',jsonEncode(settings));
+      if(mounted)setState(()=>remoteTileSettings=settings);
+    } catch (_) {}
+  }
+  Future<void> _restoreRemoteTiles() async {
+    final prefs=await SharedPreferences.getInstance();
+    try {
+      final cached=jsonDecode(prefs.getString('altaawun_remote_tiles') ?? '{}');
+      if(cached is Map && mounted)setState(()=>remoteTileSettings=Map<String,dynamic>.from(cached));
+    } catch (_) {}
+    await _loadRemoteTiles();
+  }
+
+  static const _textColors = <Color>[
+    Color(0xFF111111), Color(0xFF00552F), Color(0xFF9B1C1C),
+    Color(0xFF163C8C), Color(0xFF663399), Color(0xFFFFFFFF),
+  ];
+  static const _tileColors = <Color>[
+    Colors.white, Color(0xFFE0F2E9), Color(0xFFFFE9E9),
+    Color(0xFFFFF1D5), Color(0xFFE6EEFF), Color(0xFFF0E6FF),
+    Color(0xFFE0F5F5), Color(0xFFFFE6F0),
+  ];
+  Color _tileColor(Map<String, dynamic> category) => Color(wpCategoryColors[_wpKey(category)] ?? 0xFFFFFFFF);
+  String _wpKey(Map<String, dynamic> c) => '${c['type']}:${c['id']}';
+  List<Map<String, dynamic>> get _orderedWpCategories {
+    final items = [...wpCategories]..sort((a,b) {
+      final ai=wpCategoryOrder.indexOf(_wpKey(a));
+      final bi=wpCategoryOrder.indexOf(_wpKey(b));
+      if(ai<0 && bi<0) return 0;
+      if(ai<0) return 1;
+      if(bi<0) return -1;
+      return ai.compareTo(bi);
+    });
+    return items.where((c)=>!wpHiddenCategories.contains(_wpKey(c))).toList();
+  }
+  bool wpLoading = true;
+  String? wpError;
+  int? wpSelectedCategory;
+  String? wpSelectedTitle;
+  String wpSelectedType = 'category';
+  Map<String, dynamic>? selectedItem;
+  String? checkoutUrl;
+  bool _isSlideDestination = false;
+  static const String _site = 'https://aytamaliraq.com';
+
+  Future<void> _loadWordPressCategories({bool silent = false}) async {
+    if (_fetchingCategories) return;
+    if (silent && _lastCategoryFetch != null &&
+        DateTime.now().difference(_lastCategoryFetch!) < _refreshInterval) return;
+    _fetchingCategories = true;
+    if (!silent && mounted) setState(() { wpLoading = true; wpError = null; });
+    try {
+      final response = await http.get(
+        Uri.parse('$_site/wp-json/altaawun/v1/categories'),
+      ).timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map || decoded['categories'] is! List) {
+        throw const FormatException('Invalid categories response');
+      }
+      final categories = <Map<String, dynamic>>[];
+      for (final item in decoded['categories'] as List) {
+        if (item is Map && item['id'] is num && item['name'] is String) {
+          categories.add({'id': (item['id'] as num).toInt(), 'name': item['name'] as String, 'type': item['type'] == 'product_cat' ? 'product_cat' : 'category'});
+        }
+      }
+      _lastCategoryFetch = DateTime.now();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('wp_categories_cache', jsonEncode(categories));
+      if (!mounted) return;
+      setState(() { wpCategories = categories; wpLoading = false; wpError = null; });
+    } catch (_) {
+      if (!mounted) return;
+      if (!silent || wpCategories.isEmpty) {
+        setState(() { wpError = 'تعذر تحميل تصنيفات الجمعية. تحقق من الاتصال بالإنترنت وحاول مرة أخرى.'; wpLoading = false; });
+      }
+    } finally {
+      _fetchingCategories = false;
+    }
+  }
+
+  void _openWordPressCategory(int id, String title, String type) {
+    setState(() { selectedItem = null; checkoutUrl = null; wpSelectedCategory = id; wpSelectedTitle = title; wpSelectedType = type; page = 0; customPage = null; });
+  }
+
+  String _plainText(String html) => html
+      .replaceAll(RegExp(r'<[^>]*>'), '')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#039;', "'")
+      .replaceAll('&nbsp;', ' ');
+
+  Widget _inAppDetails() {
+    final item = selectedItem!;
+    final isProduct = wpSelectedType == 'product_cat';
+    final title = isProduct ? (item['name'] ?? '').toString()
+        : _plainText((item['title']?['rendered'] ?? '').toString());
+    final content = isProduct ? (item['full_description'] ?? item['description'] ?? '').toString()
+        : (item['content']?['rendered'] ?? '').toString();
+    final image = isProduct ? (item['image'] ?? '').toString() : _postImage(item);
+    final price = (item['price'] ?? '').toString();
+    final link = (item['link'] ?? '').toString();
+    final uri = Uri.tryParse(link);
+    final valid = uri != null && uri.scheme == 'https' &&
+        (uri.host == 'aytamaliraq.com' || uri.host == 'www.aytamaliraq.com');
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      TextButton.icon(onPressed: () => setState(() => selectedItem = null),
+        icon: const Icon(Icons.arrow_forward), label: Text(page == 4 && wpSelectedCategory == null ? 'العودة إلى الأخبار' : 'العودة إلى التصنيف')),
+      if (image.isNotEmpty) ClipRRect(borderRadius: BorderRadius.circular(14),
+        child: Image.network(image, height: 240, fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 60))),
+      const SizedBox(height: 12),
+      if (!isProduct) const Padding(padding: EdgeInsets.only(bottom: 10),
+        child: Text('تفاصيل الخبر', style: TextStyle(fontSize: 16, color: green, fontWeight: FontWeight.bold))),
+      Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, height: 1.35)),
+      if (price.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(_plainText(price), style: const TextStyle(fontSize: 19, color: green))),
+      if (content.isNotEmpty && isProduct) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_plainText(content), style: const TextStyle(fontSize: 16, height: 1.7))),
+      if (content.isNotEmpty && !isProduct) SizedBox(height: MediaQuery.sizeOf(context).height * 0.72, child: _HtmlContent(content: content, onLink: (url) {
+        final uri = Uri.tryParse(url);
+        if (uri == null || uri.scheme != 'https') return;
+        if (uri.host != 'aytamaliraq.com' && uri.host != 'www.aytamaliraq.com') return;
+        final path = uri.path.toLowerCase();
+        final isDonation = path.contains('/checkout') || path.contains('/cart') ||
+            path.contains('/order-pay') || uri.queryParameters.containsKey('add-to-cart');
+        if (isDonation) setState(() => checkoutUrl = url);
+      })),
+      if (isProduct) FilledButton.icon(
+        onPressed: valid ? () {
+          final productId = int.tryParse((item['id'] ?? '').toString());
+          final productType = (item['type'] ?? 'simple').toString();
+          // Simple sponsorships go directly to the cart, not to a full
+          // WordPress product page containing unrelated links and products.
+          final target = productId != null && productId > 0 && productType == 'simple'
+              ? 'https://www.aytamaliraq.com/cart/?add-to-cart=$productId'
+              : link;
+          setState(() => checkoutUrl = target);
+        } : null,
+        icon: const Icon(Icons.shopping_cart_outlined), label: const Text('اختيار الكفالة وإضافتها للسلة')),
+    ]);
+  }
+
+  Widget _inAppCheckout() => Column(children: [
+    TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
+      icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
+    Expanded(child: _CheckoutContent(key: ValueKey('$checkoutUrl/$_isSlideDestination'), url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', allowSiteNavigation: _isSlideDestination, onPageNotFound: () {
+      if (!mounted || !_isSlideDestination) return;
+      setState(() { checkoutUrl = null; _isSlideDestination = false; });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر العثور على الصفحة أو الخبر')));
+    }, onCartCount: (count) {
+      if (mounted && _cartCount != count) setState(() => _cartCount = count);
+    })),
+  ]);
+
+  String _postImage(dynamic post) {
+    if (post is! Map) return '';
+    final direct = (post['featured_image_url'] ?? '').toString();
+    if (direct.isNotEmpty) return direct;
+    final embedded = post['_embedded'];
+    if (embedded is Map) {
+      final media = embedded['wp:featuredmedia'];
+      if (media is List && media.isNotEmpty && media.first is Map) {
+        final image = (media.first['source_url'] ?? '').toString();
+        if (image.isNotEmpty) return image;
+      }
+    }
+    final content = (post['content'] is Map
+        ? (post['content']['rendered'] ?? '') : '').toString();
+    final match = RegExp(r'''<img\b[^>]*\bsrc\s*=\s*["']([^"']+)''',
+      caseSensitive: false).firstMatch(content);
+    final src = (match?.group(1) ?? '').replaceAll('&amp;', '&');
+    if (src.isEmpty) {
+      final youtube = RegExp(
+        r'''(?:youtube\.com/(?:embed/|watch\?v=)|youtu\.be/)([A-Za-z0-9_-]{11})''',
+        caseSensitive: false).firstMatch(content.replaceAll('&amp;', '&'));
+      if (youtube != null) return 'https://img.youtube.com/vi/${youtube.group(1)}/hqdefault.jpg';
+    }
+    if (src.startsWith('//')) return 'https:$src';
+    if (src.startsWith('/')) return '$_site$src';
+    return src.startsWith('https://') || src.startsWith('http://') ? src : '';
+  }
+
+  bool _postHasVideo(dynamic post) {
+    if (post is! Map) return false;
+    final content = (post['content'] is Map
+        ? (post['content']['rendered'] ?? '') : '').toString();
+    return RegExp(r'<video\b|<iframe\b|youtube\.com|youtu\.be|vimeo\.com|\.mp4',
+      caseSensitive: false).hasMatch(content);
+  }
+
+  String _selectedCategoryImage() {
+    for (final category in wpCategories) {
+      if (category['id'] == wpSelectedCategory &&
+          category['type'] == wpSelectedType) {
+        return (category['image'] ?? '').toString();
+      }
+    }
+    return '';
+  }
+
+  Widget _wordPressPosts() {
+    final id = wpSelectedCategory!;
+    final isProducts = wpSelectedType == 'product_cat';
+    return FutureBuilder<http.Response>(
+      key: ValueKey(id),
+      future: http.get(Uri.parse(isProducts
+        ? '$_site/wp-json/altaawun/v1/products?category=$id'
+        : '$_site/wp-json/wp/v2/posts?categories=$id&per_page=30&_embed=1')).timeout(const Duration(seconds: 15)),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || snapshot.data?.statusCode != 200) {
+          return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text('تعذر تحميل مقالات هذا التصنيف'),
+            TextButton(onPressed: () => setState(() {}), child: const Text('إعادة المحاولة')),
+            TextButton(onPressed: () => go(0), child: const Text('العودة للرئيسية')),
+          ]));
+        }
+        try {
+          final decoded = jsonDecode(utf8.decode(snapshot.data!.bodyBytes));
+          final posts = isProducts ? (decoded['products'] as List) : (decoded as List);
+          return ListView(children: [
+            ListTile(
+              leading: _selectedCategoryImage().isNotEmpty
+                  ? ClipRRect(borderRadius: BorderRadius.circular(8),
+                      child: Image.network(_selectedCategoryImage(), width: 62,
+                        height: 62, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.folder)))
+                  : const Icon(Icons.folder_outlined, color: green),
+              title: Text(wpSelectedTitle ?? 'التصنيف',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 21)),
+              trailing: IconButton(icon: const Icon(Icons.home), onPressed: () => go(0))),
+            if (posts.isEmpty) const Padding(
+              padding: EdgeInsets.all(28), child: Center(child: Text('لا توجد مقالات في هذا التصنيف حاليًا'))),
+            for (final post in posts) ...[
+              InkWell(
+                onTap: () => setState(() => selectedItem = Map<String, dynamic>.from(post as Map)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(width: 94, height: 82,
+                        child: Stack(children: [
+                          Positioned.fill(child: ClipRRect(
+                            borderRadius: BorderRadius.circular(5),
+                            child: (isProducts ? (post['image'] ?? '').toString() : _postImage(post)).isNotEmpty
+                              ? Image.network(isProducts ? (post['image'] ?? '').toString() : _postImage(post),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => const Icon(Icons.image_outlined, color: green))
+                              : const Icon(Icons.image_outlined, color: green),
+                          )),
+                          if (!isProducts && _postHasVideo(post))
+                            const Positioned(bottom: 4, right: 4,
+                              child: Icon(Icons.play_circle_fill, color: Colors.white, size: 26)),
+                        ]),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(isProducts ? (post['name'] ?? '').toString()
+                              : _plainText((post['title']?['rendered'] ?? '').toString()),
+                            maxLines: 3, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, height: 1.3)),
+                          const SizedBox(height: 7),
+                          Text(isProducts ? (post['price'] ?? '').toString()
+                              : (wpSelectedTitle ?? 'أخبار'),
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                          if (!isProducts && (post['date'] ?? '').toString().isNotEmpty)
+                            Text((post['date'] ?? '').toString().split('T').first,
+                              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        ],
+                      )),
+                    ],
+                  ),
+                ),
+              ),
+              const Divider(height: 1, indent: 14, endIndent: 14),
+            ],
+          ]);
+        } catch (_) {
+          return const Center(child: Text('تعذر قراءة بيانات المقالات'));
+        }
+      },
+    );
+  }
+  String _labelFor(int id) => customCategories[id] ?? _categoryLabels[id] ?? 'تصنيف';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppSlides();
+    _loadCategorySettings();
+    _restoreRemoteTiles();
+    _loadNotificationPreferences();
+    _setupPush();
+    notificationTapUrl.addListener(_onLocalNotificationTap);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onLocalNotificationTap());
+    WidgetsBinding.instance.addObserver(this);
+    _loadCachedWordPressCategories();
+  }
+
+  Future<void> _loadCachedWordPressCategories() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('wp_categories_cache');
+    if (cached != null) {
+      try {
+        final items = jsonDecode(cached) as List;
+        if (mounted) {
+          setState(() {
+            wpCategories = items.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+            wpLoading = false;
+          });
+        }
+      } catch (_) {}
+    }
+    await _loadWordPressCategories(silent: cached != null);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadWordPressCategories(silent: true);
+      _loadRemoteTiles();
+    }
+  }
+
+  @override
+  void dispose() {
+    _slideTimer?.cancel();
+    notificationTapUrl.removeListener(_onLocalNotificationTap);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  Future<void> _loadCategorySettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedOrder = prefs.getStringList('home_category_order');
+    final savedTileSize = prefs.getString('home_tile_size') ?? 'medium';
+    final parsed = savedOrder?.map(int.tryParse).whereType<int>().toList();
+    final savedHidden = prefs.getStringList('home_category_hidden') ?? [];
+    final savedCustom = prefs.getStringList('home_custom_categories') ?? [];
+    final custom = <int, String>{};
+    for (final item in savedCustom) {
+      final separator = item.indexOf('|');
+      if (separator < 0) continue;
+      final id = int.tryParse(item.substring(0, separator));
+      final name = item.substring(separator + 1).trim();
+      if (id != null && id >= 100 && name.isNotEmpty) custom[id] = name;
+    }
+    if (!mounted) return;
+    setState(() {
+      _homeTileSize = ['small', 'medium', 'large'].contains(savedTileSize) ? savedTileSize : 'medium';
+      wpCategoryOrder = prefs.getStringList('home_wp_category_order') ?? [];
+      wpHiddenCategories = (prefs.getStringList('home_wp_category_hidden') ?? []).toSet();
+      try {
+        final raw = jsonDecode(prefs.getString('home_wp_category_colors') ?? '{}') as Map;
+        wpCategoryColors = raw.map((k,v) => MapEntry(k.toString(), (v as num).toInt()));
+      } catch (_) { wpCategoryColors = {}; }
+      try {
+        final raw = jsonDecode(prefs.getString('home_wp_category_text_colors') ?? '{}') as Map;
+        wpCategoryTextColors = raw.map((k,v) => MapEntry(k.toString(), (v as num).toInt()));
+      } catch (_) { wpCategoryTextColors = {}; }
+      try {
+        final raw = jsonDecode(prefs.getString('home_wp_category_icon_colors') ?? '{}') as Map;
+        wpCategoryIconColors = raw.map((k,v) => MapEntry(k.toString(), (v as num).toInt()));
+      } catch (_) { wpCategoryIconColors = {}; }
+      customCategories = custom;
+      final valid = {..._defaultCategoryOrder, ...custom.keys};
+      if (parsed != null && parsed.toSet().length == parsed.length &&
+          parsed.toSet().containsAll(valid) && valid.containsAll(parsed)) {
+        categoryOrder = parsed;
+      } else {
+        categoryOrder = [..._defaultCategoryOrder, ...custom.keys];
+      }
+      hiddenCategories = savedHidden.map(int.tryParse).whereType<int>()
+          .where(valid.contains).toSet();
+    });
+  }
+
+  Future<void> _saveCategorySettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('home_tile_size', _homeTileSize);
+    await prefs.setStringList('home_wp_category_order', wpCategoryOrder);
+    await prefs.setStringList('home_wp_category_hidden', wpHiddenCategories.toList());
+    await prefs.setString('home_wp_category_colors', jsonEncode(wpCategoryColors));
+    await prefs.setString('home_wp_category_text_colors', jsonEncode(wpCategoryTextColors));
+    await prefs.setString('home_wp_category_icon_colors', jsonEncode(wpCategoryIconColors));
+    await prefs.setStringList('home_category_order',
+        categoryOrder.map((id) => '$id').toList());
+    await prefs.setStringList('home_category_hidden',
+        hiddenCategories.map((id) => '$id').toList());
+    await prefs.setStringList('home_custom_categories',
+        customCategories.entries.map((e) => '${e.key}|${e.value}').toList());
+  }
+
+  void _addCategoryInline(String value, StateSetter refreshSheet) {
+    final name = value.trim();
+    if (name.isEmpty) return;
+    final id = customCategories.keys.fold<int>(99, (max, x) => x > max ? x : max) + 1;
+    refreshSheet(() {
+      customCategories[id] = name;
+      categoryOrder.add(id);
+    });
+    if (mounted) setState(() {});
+    _saveCategorySettings();
+  }
+
+  void _openCustomCategory(int id) {
+    setState(() { customPage = id; page = 0; });
+  }
+
+  Future<Color?> _pickCustomColor(Color initial, String title) async {
+    HSVColor selected = HSVColor.fromColor(initial);
+    return showDialog<Color>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refresh) => AlertDialog(
+          title: Text(title),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                height: 64,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: selected.toColor(),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('درجة اللون'),
+              Slider(
+                value: selected.hue,
+                min: 0, max: 360,
+                onChanged: (value) => refresh(() => selected = selected.withHue(value)),
+              ),
+              const Text('قوة اللون'),
+              Slider(
+                value: selected.saturation,
+                min: 0, max: 1,
+                onChanged: (value) => refresh(() => selected = selected.withSaturation(value)),
+              ),
+              const Text('الإضاءة'),
+              Slider(
+                value: selected.value,
+                min: 0, max: 1,
+                onChanged: (value) => refresh(() => selected = selected.withValue(value)),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, selected.toColor()),
+              child: const Text('حفظ اللون'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _manageCategories() {
+    showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, refreshSheet) {
+          final items = [...wpCategories]..sort((a,b) {
+            final ai=wpCategoryOrder.indexOf(_wpKey(a));
+            final bi=wpCategoryOrder.indexOf(_wpKey(b));
+            if(ai<0 && bi<0) return 0;
+            if(ai<0) return 1;
+            if(bi<0) return -1;
+            return ai.compareTo(bi);
+          });
+          return SafeArea(child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .76,
+            child: Column(children: [
+              const Padding(padding: EdgeInsets.all(12), child: Text(
+                'تخصيص الواجهة الرئيسية',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text('اختر من تصنيفات WordPress الموجودة فقط، واسحب لتغيير ترتيب ظهورها في الصفحة الرئيسية.')),
+              Padding(padding: const EdgeInsets.all(12), child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value:'small',label:Text('صغير')),
+                  ButtonSegment(value:'medium',label:Text('متوسط')),
+                  ButtonSegment(value:'large',label:Text('كبير')),
+                ],
+                selected: {_homeTileSize},
+                onSelectionChanged: (values) {
+                  refreshSheet(() => _homeTileSize = values.first);
+                  setState(() {});
+                  _saveCategorySettings();
+                },
+              )),
+              Expanded(child: items.isEmpty
+                ? const Center(child: Text('لا توجد تصنيفات محمّلة من WordPress. افتح تصنيفات التطبيق لتحديثها.'))
+                : ReorderableListView.builder(
+                  buildDefaultDragHandles: false,
+                  itemCount: items.length,
+                  onReorder: (oldIndex,newIndex) {
+                    if(newIndex>oldIndex) newIndex--;
+                    final moved=items.removeAt(oldIndex);
+                    items.insert(newIndex,moved);
+                    refreshSheet(() => wpCategoryOrder=items.map(_wpKey).toList());
+                    setState(() {});
+                    _saveCategorySettings();
+                  },
+                  itemBuilder: (context,index) {
+                    final item=items[index];
+                    final key=_wpKey(item);
+                    return ListTile(
+                      key: ValueKey(key),
+                      leading: ReorderableDragStartListener(
+                        index:index, child:const Icon(Icons.drag_handle,color:green)),
+                      title: Text(item['name'] as String),
+                      subtitle: Text(item['type']=='product_cat'?'تصنيف منتجات':'تصنيف مقالات'),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(
+                          tooltip: 'اختيار لون المربع',
+                          icon: Icon(Icons.palette, color: Color(wpCategoryColors[key] ?? 0xFF006633)),
+                          onPressed: () async {
+                            final chosen = await _pickCustomColor(
+                              Color(wpCategoryColors[key] ?? 0xFFE3F5E9),
+                              'لون خلفية المربع',
+                            );
+                            if (chosen == null || !mounted) return;
+                            refreshSheet(() => wpCategoryColors[key] = chosen.toARGB32());
+                            setState(() {});
+                            await _saveCategorySettings();
+                          },
+                        ),
+                        IconButton(
+                          tooltip: 'اختيار لون الكتابة',
+                          icon: Icon(Icons.format_color_text, color: Color(wpCategoryTextColors[key] ?? 0xFF111111)),
+                          onPressed: () async {
+                            final chosen = await _pickCustomColor(
+                              Color(wpCategoryTextColors[key] ?? 0xFF111111),
+                              'لون كتابة المربع',
+                            );
+                            if (chosen == null || !mounted) return;
+                            refreshSheet(() => wpCategoryTextColors[key] = chosen.toARGB32());
+                            setState(() {});
+                            await _saveCategorySettings();
+                          },
+                        ),
+                        IconButton(
+                          tooltip: 'اختيار لون الأيقونة',
+                          icon: Icon(Icons.auto_awesome, color: Color(wpCategoryIconColors[key] ?? 0xFF00642D)),
+                          onPressed: () async {
+                            final chosen = await _pickCustomColor(
+                              Color(wpCategoryIconColors[key] ?? 0xFF00642D),
+                              'لون أيقونة المربع',
+                            );
+                            if (chosen == null || !mounted) return;
+                            refreshSheet(() => wpCategoryIconColors[key] = chosen.toARGB32());
+                            setState(() {});
+                            await _saveCategorySettings();
+                          },
+                        ),
+                        Switch(
+                        value: !wpHiddenCategories.contains(key),
+                        onChanged: (visible) {
+                          refreshSheet(() {
+                            if(visible) {wpHiddenCategories.remove(key);}
+                            else {wpHiddenCategories.add(key);}
+                          });
+                          setState(() {});
+                          _saveCategorySettings();
+                        },
+                      ),
+                      ]),
+                    );
+                  },
+                )),
+              Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+                TextButton(onPressed: () {
+                  refreshSheet(() {
+                    wpCategoryOrder=[];
+                    wpHiddenCategories.clear();
+                    _homeTileSize='medium';
+                    wpCategoryColors.clear();
+                    wpCategoryTextColors.clear();
+                    wpCategoryIconColors.clear();
+                  });
+                  setState(() {});
+                  _saveCategorySettings();
+                }, child: const Text('استعادة الافتراضي')),
+                const Spacer(),
+                FilledButton(onPressed: () async {
+                  await _saveCategorySettings();
+                  if(sheetContext.mounted) Navigator.pop(sheetContext);
+                }, child: const Text('حفظ')),
+              ])),
+            ]),
+          ));
+        },
+      ),
+    );
+  }
+
+  void _openVoiceAssistant() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => CharityVoiceAssistant(
+        onNavigate: (destination) {
+          go(destination);
+          Navigator.of(context).pop();
+        },
+        onOpenPost: (post) {
+          _openNewsPost(post);
+          Navigator.of(context).pop();
+        },
+      ),
+    ));
+  }
+
+  void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
+
+  void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; _isSlideDestination = false; });
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      toolbarHeight: page == 0 ? 128 : 86,
+      backgroundColor: Colors.white,
+      foregroundColor: deepGreen,
+      leading: Builder(builder: (context) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(context).openDrawer())),
+      titleSpacing: 0,
+      title: page == 0 ? const FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.center,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          _Emblem(size: 54),
+          SizedBox(height: 3),
+          Text('جمعية التعاون الخيرية', maxLines: 1,
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          Text('مدرسة الأيتام وكفالتهم', maxLines: 1,
+            style: TextStyle(fontSize: 12)),
+        ]),
+      ) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      actions: [IconButton(
+        tooltip: 'سلة الكفالات والتبرعات',
+        onPressed: _openCart,
+        icon: Badge(
+          isLabelVisible: _cartCount != null && _cartCount! > 0,
+          label: Text((_cartCount ?? 0).toString()),
+          child: const Icon(Icons.shopping_cart_outlined, color: green),
+        ),
+      ), if (page == 0) IconButton(
+        tooltip: 'الإشعارات',
+        onPressed: () => showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('الإشعارات'),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('رمز الجهاز للاختبار عبر Firebase. لا يوجد سجل إشعارات محفوظ حتى الآن.'),
+              const SizedBox(height: 12),
+              SelectableText(_fcmToken ?? 'لم يتوفر رمز FCM بعد. تأكد من اتصال الإنترنت والسماح بالإشعارات.',
+                style: const TextStyle(fontSize: 12)),
+            ]),
+            actions: [TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('إغلاق'),
+            )],
+          ),
+        ),
+        icon: const Icon(Icons.notifications_outlined, color: green),
+      )],
+    ),
+    drawer: Drawer(child: SafeArea(child: Column(children: [
+      Container(width: double.infinity, padding: const EdgeInsets.all(24), color: green,
+        child: const Column(children: [_Emblem(size: 76), SizedBox(height: 12),
+          Text('جمعية التعاون الخيرية', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold))])),
+      ListTile(
+        leading: const Icon(Icons.refresh, color: green),
+        title: const Text('تصنيفات التطبيق'),
+        subtitle: const Text('تُحدّث تلقائيًا من لوحة إدارة الموقع'),
+        onTap: () { Navigator.pop(context); go(0); },
+      ),
+      ListTile(leading: const Icon(Icons.shopping_cart_outlined, color: green),
+        title: const Text('سلة الكفالات والتبرعات'),
+        onTap: () { Navigator.pop(context); _openCart(); }),
+      ListTile(
+        leading: const Icon(Icons.settings_outlined, color: green),
+        title: const Text('الإعدادات'),
+        subtitle: const Text('جميع خيارات التطبيق من صفحة حسابي'),
+        onTap: () { Navigator.pop(context); go(7); _openAppSettings(); },
+      ),
+      Expanded(child: ListView(children: [
+        for (var i = 0; i < names.length; i++)
+          ListTile(
+            leading: Icon(_icons[i], color: green), title: Text(names[i]),
+            onTap: () { Navigator.pop(context); go(i); },
+          ),
+      ])),
+    ]))),
+    body: Stack(children: [
+      IndexedStack(index: checkoutUrl == null ? 0 : 1, children: [
+      selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
+      _inAppCheckout(),
+      ]),
+      // Separate same-origin cart reader: initialise the badge when the app starts,
+      // even if the customer has not opened the visible WooCommerce checkout.
+      Offstage(
+        offstage: true,
+        child: SizedBox(width: 1, height: 1,
+          child: _CheckoutContent(
+            key: ValueKey('cart-reader-$_cartRefreshKey'),
+            url: 'https://www.aytamaliraq.com/cart/',
+            onCartCount: (count) {
+              if (mounted && _cartCount != count) setState(() => _cartCount = count);
+            },
+          ),
+        ),
+      ),
+    ]),
+    bottomNavigationBar: NavigationBar(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      height: 72,
+      selectedIndex: [0, 1, 4, 3, 7].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 7].indexOf(page),
+      onDestinationSelected: (index) => go([0, 1, 4, 3, 7][index]),
+      destinations: const [
+        NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
+        NavigationDestination(icon: Icon(Icons.favorite_border), label: 'تبرع'),
+        NavigationDestination(icon: Icon(Icons.article_outlined), label: 'الأخبار'),
+        NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), label: 'المزيد'),
+        NavigationDestination(icon: Icon(Icons.person_outline), label: 'حسابي'),
+      ],
+    ),
+  );
+
+  static const _icons = [
+    Icons.home, Icons.favorite, Icons.school, Icons.volunteer_activism,
+    Icons.article, Icons.photo_library, Icons.menu_book, Icons.person_outline,
+  ];
+
+  Widget _customSection(int id) => ListView(
+    padding: const EdgeInsets.all(20),
+    children: [
+      TextButton.icon(
+        onPressed: () => go(0),
+        icon: const Icon(Icons.arrow_forward),
+        label: const Text('العودة إلى الرئيسية'),
+      ),
+      const SizedBox(height: 30),
+      const Icon(Icons.folder_open, size: 86, color: green),
+      const SizedBox(height: 18),
+      Text(_labelFor(id), textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 25, fontWeight: FontWeight.bold, color: deepGreen)),
+      const SizedBox(height: 12),
+      const Text('هذا التصنيف جاهز للعرض. يمكن ربط محتواه لاحقًا بموقع الجمعية.',
+          textAlign: TextAlign.center),
+    ],
+  );
+
+  IconData _categoryIcon(String name) {
+    if (RegExp(r'كفال|يتيم|أيتام|ايتام').hasMatch(name)) return Icons.volunteer_activism_outlined;
+    if (RegExp(r'مناشد|إنسان').hasMatch(name)) return Icons.favorite_border;
+    if (RegExp(r'غذائ|سلة').hasMatch(name)) return Icons.shopping_basket_outlined;
+    if (RegExp(r'مدرس|طالب|تعليم').hasMatch(name)) return Icons.school_outlined;
+    if (RegExp(r'تبرع|صدقات').hasMatch(name)) return Icons.favorite_outline;
+    return Icons.folder_open;
+  }
+
+  Widget _home() => ListView(padding: EdgeInsets.zero, children: [
+    const SizedBox(height: 12),
+    if (_appSlides.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: _remoteSlider()) else Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: ClipRRect(borderRadius: BorderRadius.circular(18), child: SizedBox(height: 240, child: Stack(fit: StackFit.expand, children: [
+      Image.asset(
+        'assets/home_hero.jpg',
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(
+          gradient: LinearGradient(colors: [Color(0xFF194B2F), Color(0xFF00642D)]))),
+      ),
+      const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+        begin: Alignment.centerLeft, end: Alignment.centerRight,
+        colors: [Colors.transparent, Color(0xE8004C29)]))),
+      Positioned(top: 28, right: 18, child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: const [
+          Text('بكفالتك\nنمنحهم\nمستقبلًا أفضل',
+            style: TextStyle(fontSize: 29, color: Colors.white, fontWeight: FontWeight.w900, height: 1.3)),
+        ],
+      )),
+      Positioned(bottom: 18, right: 18, child: FilledButton.icon(
+        onPressed: () => go(1),
+        style: FilledButton.styleFrom(backgroundColor: green, side: const BorderSide(color: Colors.white)),
+        icon: const Icon(Icons.favorite_border), label: const Text('كفالة يتيم',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+      )),
+    ])))),
+    Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+      GridView.count(
+        shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: _homeTileSize == 'small' ? 3 : (_homeTileSize == 'large' ? 1 : 2),
+        mainAxisSpacing: 9, crossAxisSpacing: 9,
+        mainAxisExtent: _orderedWpCategories.fold<double>(_homeTileSize == 'small' ? 112 : (_homeTileSize == 'large' ? 190 : 160), (height, category) { final value=_remoteSize(_remoteTile(category)['tile_height'],height,90,260); return value>height?value:height; }),
+        children: [
+          for (final category in _orderedWpCategories)
+            Material(
+              color: wpCategoryColors.containsKey(_wpKey(category)) ? _tileColor(category) : (_remoteColor(_remoteTile(category)['background']) ?? const [Color(0xFFE3F5E9), Color(0xFFFFEDD8), Color(0xFFF0E4FF), Color(0xFFE1EDFF), Color(0xFFFFE3EC), Color(0xFFE7F6EF)][_orderedWpCategories.indexOf(category) % 6]),
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => _openWordPressCategory(
+                    category['id'] as int, category['name'] as String,
+                    category['type'] as String),
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  _remoteTileIcon(category, _homeTileSize == 'small' ? 26 : (_homeTileSize == 'large' ? 46 : 36)),
+                  const SizedBox(height: 7),
+                  Flexible(child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(category['name'] as String,
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: _homeTileSize == 'small' ? 11 : (_homeTileSize == 'large' ? 18 : 14), fontWeight: FontWeight.bold, color: Color(wpCategoryTextColors[_wpKey(category)] ?? (_remoteColor(_remoteTile(category)['text_color'])?.value ?? 0xFF111111))))),
+                  ),
+                ]),
+              ),
+            ),
+        ],
+      ),
+      if (wpLoading)
+        const Padding(padding: EdgeInsets.all(18), child: CircularProgressIndicator())
+      else if (wpError != null)
+        Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+          Text(wpError!, textAlign: TextAlign.center),
+          TextButton(onPressed: _loadWordPressCategories, child: const Text('إعادة المحاولة')),
+        ]))
+      else if (wpCategories.isEmpty)
+        const Padding(padding: EdgeInsets.all(16),
+          child: Text('لم يتم اختيار تصنيفات للتطبيق من لوحة ووردبريس بعد.',
+            textAlign: TextAlign.center)),
+      const SizedBox(height: 12),
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        const Text('أحدث الأخبار', style: TextStyle(color: deepGreen, fontSize: 22, fontWeight: FontWeight.w900)),
+        TextButton(onPressed: () => go(4), child: const Text('عرض الكل')),
+      ]),
+      _newsFeed(homePreview: true),
+      Center(child: TextButton.icon(onPressed: () => go(4),
+        icon: const Icon(Icons.arrow_back), label: const Text('المزيد — جميع الأخبار'))),
+    ])),
+  ]);
+
+  Widget _shortcut(IconData icon, String title, int destination, {Color color = green}) =>
+    Material(color: Colors.white, borderRadius: BorderRadius.circular(14),
+      child: InkWell(borderRadius: BorderRadius.circular(14), onTap: () => destination >= 100 ? _openCustomCategory(destination) : go(destination),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 36, color: color),
+          const SizedBox(height: 9),
+          Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        ])));
+
+  Widget _sponsorshipProducts() {
+    final categories = wpCategories.where((c) =>
+      c['type'] == 'product_cat' &&
+      RegExp(r'كفال|يتيم|أيتام|ايتام|orphan|sponsor', caseSensitive: false)
+        .hasMatch((c['name'] ?? '').toString())).toList();
+    if (wpLoading && wpCategories.isEmpty) {
+      return const Center(child: Padding(padding: EdgeInsets.all(20),
+        child: CircularProgressIndicator()));
+    }
+    if (categories.isEmpty) {
+      return const Padding(padding: EdgeInsets.all(16),
+        child: Text('لا يوجد تصنيف كفالات منشور حاليًا', textAlign: TextAlign.center));
+    }
+    final category = categories.first;
+    final id = category['id'] as int;
+    final title = (category['name'] ?? 'اكفل يتيمًا').toString();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('الأيتام المتاحون للكفالة',
+        style: TextStyle(fontSize: 21, color: deepGreen, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      FutureBuilder<http.Response>(
+        future: http.get(Uri.parse('$_site/wp-json/altaawun/v1/products?category=$id'))
+          .timeout(const Duration(seconds: 15)),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: Padding(padding: EdgeInsets.all(20),
+              child: CircularProgressIndicator()));
+          }
+          if (snapshot.hasError || snapshot.data?.statusCode != 200) {
+            return const Text('تعذر تحميل الأيتام، تحقق من اتصال الإنترنت');
+          }
+          try {
+            final decoded = jsonDecode(utf8.decode(snapshot.data!.bodyBytes));
+            final products = (decoded['products'] as List).whereType<Map>().take(10).toList();
+            if (products.isEmpty) return const Text('لا توجد كفالات منشورة حاليًا');
+            return Column(children: [
+              for (final product in products) Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(padding: const EdgeInsets.all(12), child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                      Text((product['name'] ?? '').toString(), textAlign: TextAlign.right,
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 6),
+                      Text((product['price'] ?? '').toString(),
+                        style: const TextStyle(fontSize: 15, color: green)),
+                      const SizedBox(height: 8),
+                      FilledButton(
+                        onPressed: () => setState(() {
+                          wpSelectedType = 'product_cat';
+                          wpSelectedCategory = id;
+                          wpSelectedTitle = title;
+                          selectedItem = Map<String, dynamic>.from(product);
+                          checkoutUrl = null;
+                        }),
+                        child: const Text('اكفل الآن')),
+                    ])),
+                    const SizedBox(width: 12),
+                    ClipRRect(borderRadius: BorderRadius.circular(9),
+                      child: (product['image'] ?? '').toString().isNotEmpty
+                        ? Image.network((product['image'] ?? '').toString(), width: 100, height: 112,
+                            fit: BoxFit.cover, errorBuilder: (_, __, ___) =>
+                              const SizedBox(width: 100, child: Icon(Icons.person_outline)))
+                        : const SizedBox(width: 100, height: 112,
+                            child: Icon(Icons.person_outline, color: green, size: 44))),
+                  ]),
+                )),
+              TextButton.icon(
+                onPressed: () => _openWordPressCategory(id, title, 'product_cat'),
+                icon: const Icon(Icons.arrow_back), label: const Text('المزيد — جميع الأيتام')),
+            ]);
+          } catch (_) {
+            return const Text('تعذر قراءة بيانات الكفالات');
+          }
+        },
+      ),
+    ]);
+  }
+
+  Widget _donationCategories() {
+    final categories = wpCategories.where((c) => c['type'] == 'product_cat').toList();
+    if (wpLoading && wpCategories.isEmpty) {
+      return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
+    }
+    if (categories.isEmpty) {
+      return Column(children: [
+        const Text('لا توجد حالات تبرع أو كفالة منشورة حاليًا.'),
+        TextButton.icon(onPressed: () => _loadWordPressCategories(),
+          icon: const Icon(Icons.refresh), label: const Text('تحديث الحالات')),
+      ]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('حالات التبرع والكفالة', style: TextStyle(
+        fontSize: 21, fontWeight: FontWeight.bold, color: deepGreen)),
+      const SizedBox(height: 12),
+      for (final category in categories) Card(
+        child: ListTile(
+          leading: const Icon(Icons.volunteer_activism, color: green),
+          title: Text((category['name'] ?? '').toString()),
+          subtitle: const Text('عرض الحالات والتفاصيل'),
+          trailing: const Icon(Icons.chevron_left),
+          onTap: () => _openWordPressCategory(
+            category['id'] as int, (category['name'] ?? '').toString(), 'product_cat'),
+        ),
+      ),
+      const Padding(padding: EdgeInsets.all(8),
+        child: Text('يتم إتمام أي تبرع متاح عبر موقع الجمعية داخل التطبيق، ولا يجمع التطبيق بيانات الدفع مباشرة.',
+          textAlign: TextAlign.center, style: TextStyle(fontSize: 12))),
+    ]);
+  }
+
+  Future<List<Map<String, dynamic>>>? _newsCache;
+  Future<List<Map<String, dynamic>>> _fetchNews() async {
+    final uri = Uri.parse('https://www.aytamaliraq.com/wp-json/wp/v2/posts?_embed=1&per_page=50&orderby=date&order=desc');
+    final response = await http.get(uri).timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) throw Exception('تعذر تحميل الأخبار');
+    final data = jsonDecode(utf8.decode(response.bodyBytes));
+    if (data is! List) throw Exception('استجابة غير متوقعة');
+    return data.whereType<Map<String, dynamic>>().toList();
+  }
+
+  void _refreshNews() => setState(() { _newsCache = _fetchNews(); });
+
+  void _openNewsPost(Map<String, dynamic> post) => setState(() {
+    page = 4;
+    wpSelectedType = 'category';
+    wpSelectedCategory = null;
+    checkoutUrl = null;
+    _isSlideDestination = false;
+    selectedItem = Map<String, dynamic>.from(post);
+  });
+
+  Widget _newsFeed({bool homePreview = false}) => FutureBuilder<List<Map<String, dynamic>>>(
+    future: _newsCache ??= _fetchNews(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()));
+      }
+      if (snapshot.hasError) {
+        return Column(children: [
+          const Text('تعذر تحميل الأخبار. تحقق من الإنترنت وحاول مجددًا.'),
+          TextButton.icon(onPressed: _refreshNews, icon: const Icon(Icons.refresh), label: const Text('إعادة المحاولة')),
+        ]);
+      }
+      final allPosts = snapshot.data ?? [];
+      final posts = homePreview ? allPosts.take(10).toList() : allPosts.take(50).toList();
+      if (posts.isEmpty) return const Center(child: Text('لا توجد أخبار منشورة حاليًا'));
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (!homePreview) Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text('آخر ' + posts.length.toString() + ' خبر', textAlign: TextAlign.right,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: deepGreen))),
+        for (final post in posts) Column(children: [
+          InkWell(
+            onTap: () => _openNewsPost(post),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Text(_plainText((post['title']?['rendered'] ?? '').toString()),
+                    textAlign: TextAlign.right, maxLines: 3, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, height: 1.35)),
+                  const SizedBox(height: 7),
+                  Text((post['date'] ?? '').toString().split('T').first,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ])),
+                const SizedBox(width: 12),
+                ClipRRect(borderRadius: BorderRadius.circular(10), child:
+                  _postImage(post).isNotEmpty
+                    ? Image.network(_postImage(post), width: 92, height: 86, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox(width: 92, height: 86,
+                          child: Icon(Icons.article_outlined, color: green)))
+                    : const SizedBox(width: 92, height: 86,
+                        child: Icon(Icons.article_outlined, color: green, size: 35))),
+              ]),
+            ),
+          ),
+          const Divider(height: 1),
+        ]),
+      ]);
+    },
+  );
+
+  void _openAppSettings() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (settingsContext) => Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text('الإعدادات'),
+          backgroundColor: Colors.white,
+          foregroundColor: deepGreen,
+        ),
+        body: ListView(padding: const EdgeInsets.symmetric(vertical: 12), children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Text('إعدادات التطبيق', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800, color: deepGreen)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.record_voice_over, color: green),
+            title: const Text('المساعد الصوتي'),
+            subtitle: const Text('التحدث والقراءة والاستماع المستمر'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _openVoiceAssistant,
+          ),
+          ListTile(
+            leading: const Icon(Icons.text_fields, color: green),
+            title: const Text('الخط وحجم الكتابة'),
+            subtitle: const Text('Cairo والخطوط الأخرى'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _showFontPreferences,
+          ),
+          ListTile(
+            leading: const Icon(Icons.notifications_active, color: green),
+            title: const Text('الإشعارات والأصوات'),
+            subtitle: const Text('النغمات والاهتزاز'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _showNotificationPreferences,
+          ),
+          ListTile(
+            leading: const Icon(Icons.refresh, color: green),
+            title: const Text('إعادة تسجيل إشعارات الآيفون'),
+            subtitle: Text(_pushDiagnostic),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _setupPush,
+          ),
+          ListTile(
+            leading: const Icon(Icons.copy_all_outlined, color: green),
+            title: const Text('نسخ رمز اختبار الإشعارات (FCM)'),
+            subtitle: const Text('لإرسال إشعار تجريبي لهذا الجهاز من Firebase'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () async {
+              try {
+                String? token = _fcmToken;
+                if (token == null || token.isEmpty) {
+                  if (defaultTargetPlatform == TargetPlatform.iOS) {
+                    final apns = await FirebaseMessaging.instance.getAPNSToken();
+                    if (apns == null) {
+                      if (settingsContext.mounted) {
+                        ScaffoldMessenger.of(settingsContext).showSnackBar(
+                          const SnackBar(content: Text('رمز APNs غير جاهز. افتح التطبيق وانتظر قليلًا ثم حاول مجددًا.')),
+                        );
+                      }
+                      return;
+                    }
+                  }
+                  token = await FirebaseMessaging.instance.getToken();
+                }
+                if (token == null || token.isEmpty) {
+                  throw StateError('FCM token unavailable');
+                }
+                await Clipboard.setData(ClipboardData(text: token));
+                if (settingsContext.mounted) {
+                  ScaffoldMessenger.of(settingsContext).showSnackBar(
+                    const SnackBar(content: Text('تم نسخ رمز FCM. الصقه في Firebase > Test on device. لا تشاركه علنًا.')),
+                  );
+                }
+              } catch (error) {
+                if (settingsContext.mounted) {
+                  ScaffoldMessenger.of(settingsContext).showSnackBar(
+                    SnackBar(content: Text('تعذر الحصول على رمز FCM: $error')),
+                  );
+                }
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.dashboard_customize, color: green),
+            title: const Text('تخصيص الصفحة الرئيسية'),
+            subtitle: const Text('ترتيب الأقسام وحجم المربعات وإخفاؤها'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: _manageCategories,
+          ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Text('يمكن تغيير هذه الخيارات في أي وقت.', style: TextStyle(color: Colors.black54)),
+          ),
+        ]),
+      ),
+    ));
+  }
+
+  Widget _accountPage() => Column(children: [
+    Expanded(child: CharityAccountPage(cartCount: _cartCount, onOpenCart: _openCart)),
+    SafeArea(top: false, child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      child: SizedBox(width: double.infinity, child: FilledButton.icon(
+        onPressed: _openAppSettings,
+        icon: const Icon(Icons.settings_outlined),
+        label: const Padding(
+          padding: EdgeInsets.symmetric(vertical: 12),
+          child: Text('الإعدادات  Settings', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+        ),
+      )),
+    )),
+  ]);
+
+  Widget _section() {
+    final descriptions = [
+      '',
+      'كن سببًا في سعادة يتيم. الكفالة ليست مالًا فقط، بل هي رعاية واهتمام ومستقبل مشرق.',
+      'نوفر لأبنائنا بيئة تعليمية آمنة ومتكاملة لبناء مستقبلهم.',
+      'ساهم في دعم برامج الجمعية عبر وسائل تبرع موثوقة.',
+      'تابع آخر الأخبار والأنشطة والمبادرات.',
+      'صور وفيديوهات أنشطة المدرسة والجمعية.',
+      'جمعية التعاون الخيرية — مدرسة الأيتام وكفالتهم.',
+    ];
+    return ListView(padding: const EdgeInsets.all(18), children: [
+      Container(
+        height: 180,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [deepGreen, green]),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(child: Icon(_icons[page], size: 85, color: Colors.white)),
+      ),
+      const SizedBox(height: 18),
+      Text(names[page], textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 25, color: deepGreen, fontWeight: FontWeight.w900)),
+      const SizedBox(height: 12),
+      Text(descriptions[page], textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, height: 1.7)),
+      const SizedBox(height: 18),
+      if (page == 1) ...[
+        _feature(Icons.description_outlined, 'تقرير دوري عن حالة اليتيم'),
+        _feature(Icons.auto_stories_outlined, 'متابعة تطوره الدراسي'),
+        _feature(Icons.shield_outlined, 'خصوصية وأمان بيانات الأطفال'),
+        const SizedBox(height: 8),
+        _sponsorshipProducts(),
+      ] else if (page == 2) ...[
+        _feature(Icons.menu_book, 'مناهج دراسية'),
+        _feature(Icons.groups, 'أنشطة طلابية'),
+        _feature(Icons.school, 'المرافق والمدرسون'),
+        _feature(Icons.photo_library, 'الصور والفيديوهات'),
+      ] else if (page == 3) ...[
+        _donationCategories(),
+      ] else if (page == 4) ...[
+        _newsFeed(),
+      ] else if (page == 6) ...[
+        const CharityAboutContent(),
+      ] else ...[
+        _feature(Icons.info_outline, 'سيظهر المحتوى المعتمد بعد ربط لوحة إدارة الجمعية'),
+      ],
+    ]);
+  }
+
+  Widget _feature(IconData icon, String text) => Card(
+    child: ListTile(leading: Icon(icon, color: green), title: Text(text)),
+  );
+  Widget _disabledAction(String text) => FilledButton(
+    onPressed: null, child: Padding(padding: const EdgeInsets.all(10), child: Text(text)),
+  );
+}
+
+class _CategoryAddField extends StatefulWidget {
+  final ValueChanged<String> onAdd;
+  const _CategoryAddField({required this.onAdd});
+
+  @override
+  State<_CategoryAddField> createState() => _CategoryAddFieldState();
+}
+
+class _CategoryAddFieldState extends State<_CategoryAddField> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    if (name.isEmpty) return;
+    widget.onAdd(name);
+    _controller.clear();
+    FocusScope.of(context).unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    Expanded(child: TextField(
+      controller: _controller,
+      maxLength: 50,
+      textInputAction: TextInputAction.done,
+      onSubmitted: (_) => _submit(),
+      decoration: const InputDecoration(
+        labelText: 'اسم التصنيف الجديد',
+        hintText: 'مثال: مشاريع الجمعية',
+        counterText: '',
+        border: OutlineInputBorder(),
+        isDense: true,
+      ),
+    )),
+    const SizedBox(width: 8),
+    FilledButton.icon(
+      onPressed: _submit,
+      icon: const Icon(Icons.add),
+      label: const Text('إضافة'),
+    ),
+  ]);
+}
+), '') == '/cart') {
+            _destinationAfterBridge = null;
+            controller.loadRequest(Uri.parse(pending));
+            return;
+          }
           if (uri != null && (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
             if (widget.allowSiteNavigation) {
               controller.runJavaScript(_slideDetailDisplayScript);
