@@ -394,7 +394,8 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           }
         },
       ))
-      ..loadRequest(Uri.parse(widget.url));
+      ;
+    _loadCheckoutWithAccount(widget.url);
   }
   // Remove unrelated site chrome only while the embedded cart/checkout is open.
   // Keep WooCommerce forms, payment gateways, and order details untouched.
