@@ -222,4 +222,3 @@ class _AccountState extends State<CharityAccountPage> {
     ],
   ]);
 }
-}
