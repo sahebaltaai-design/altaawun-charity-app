@@ -17,6 +17,15 @@ class _AccountState extends State<CharityAccountPage> {
   final email = TextEditingController();
   final password = TextEditingController();
   final name = TextEditingController();
+  final lastName = TextEditingController();
+  final confirmPassword = TextEditingController();
+  final phone = TextEditingController();
+  final country = TextEditingController();
+  final state = TextEditingController();
+  final city = TextEditingController();
+  final address = TextEditingController();
+  final address2 = TextEditingController();
+  final postcode = TextEditingController();
   String? token, error;
   Map<String, dynamic>? user;
   List<dynamic> orders = [];
@@ -26,7 +35,7 @@ class _AccountState extends State<CharityAccountPage> {
   @override
   void initState() { super.initState(); restore(); }
   @override
-  void dispose() { email.dispose(); password.dispose(); name.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); password.dispose(); name.dispose(); lastName.dispose(); confirmPassword.dispose(); phone.dispose(); country.dispose(); state.dispose(); city.dispose(); address.dispose(); address2.dispose(); postcode.dispose(); super.dispose(); }
 
   Future<Map<String, dynamic>> api(String path, {Map<String, String>? body, String? bearer}) async {
     final headers = <String, String>{'Accept': 'application/json'};
@@ -64,6 +73,155 @@ class _AccountState extends State<CharityAccountPage> {
     } catch (_) { await storage.delete(key: 'altaawun_token'); }
     finally { if (mounted) setState(() => busy = false); }
   }
+
+  bool get validRegistration => [
+    name, lastName, phone, country, state, city, address
+  ].every((field) => field.text.trim().isNotEmpty) &&
+      RegExp(r'^\\+?[0-9 ()-]{7,20}
+    if (busy) return;
+    if (email.text.trim().isEmpty || (mode != 'forgot' && password.text.isEmpty) ||
+        (mode == 'register' && !validRegistration)) {
+      setState(() => error = 'أكمل جميع الحقول المطلوبة، وتأكد من رقم الهاتف وتطابق كلمتي المرور (12 حرفًا على الأقل)');
+      return;
+    }
+    setState(() { busy = true; error = null; });
+    try {
+      final current = mode;
+      final fields = current == 'forgot' ? {'email': email.text.trim()} :
+        current == 'register' ? {'email': email.text.trim(), 'password': password.text, 'name': '${name.text.trim()} ${lastName.text.trim()}', 'first_name': name.text.trim(), 'last_name': lastName.text.trim(), 'billing_first_name': name.text.trim(), 'billing_last_name': lastName.text.trim(), 'billing_phone': phone.text.trim(), 'billing_country': country.text.trim(), 'billing_state': state.text.trim(), 'billing_city': city.text.trim(), 'billing_address_1': address.text.trim(), 'billing_address_2': address2.text.trim(), 'billing_postcode': postcode.text.trim()} :
+        {'login': email.text.trim(), 'password': password.text};
+      final result = await api(current == 'forgot' ? 'forgot-password' : current, body: fields);
+      if (!mounted) return;
+      if (current == 'forgot') {
+        setState(() { mode = 'login'; error = 'إذا كان البريد مسجلًا، ستصلك رسالة الاستعادة'; });
+      } else {
+        final received = result['token']?.toString();
+        if (received == null || received.isEmpty || result['user'] is! Map) throw Exception('جلسة غير صالحة');
+        await storage.write(key: 'altaawun_token', value: received);
+        password.clear();
+        if (!mounted) return;
+        setState(() { token = received; user = Map<String, dynamic>.from(result['user'] as Map); });
+        await loadOrders();
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+
+  Future<void> loadOrders() async {
+    if (token == null) return;
+    if (mounted) setState(() => error = null);
+    try {
+      final result = await api('orders', bearer: token);
+      if (!mounted) return;
+      final fetched = result['orders'];
+      if (fetched is! List) {
+        setState(() => error = 'تعذر قراءة بيانات الطلبات من خادم الجمعية. لم يتم حذف أي بيانات.');
+        return;
+      }
+      setState(() => orders = fetched);
+    } catch (e) {
+      if (mounted) setState(() => error =
+        'تعذر استعادة الكفالات والطلبات من الخادم. يرجى إعادة المحاولة. ' +
+        e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> logout() async {
+    final old = token;
+    setState(() => busy = true);
+    try { if (old != null) await api('logout', body: {}, bearer: old); } catch (_) {}
+    await storage.delete(key: 'altaawun_token');
+    if (mounted) setState(() { token = null; user = null; orders = []; busy = false; mode = 'login'; });
+  }
+
+  @override
+  Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(18), children: [
+    const SizedBox(height: 16),
+    const Icon(Icons.account_circle_outlined, size: 80, color: Color(0xFF00652A)),
+    const SizedBox(height: 12),
+    Text(user == null ? 'حسابي' : (user!['name']?.toString() ?? 'حسابي'),
+      textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+    const SizedBox(height: 16),
+    if (busy) const LinearProgressIndicator(),
+    if (error != null) Padding(padding: const EdgeInsets.all(12), child: Text(error!,
+      textAlign: TextAlign.center, style: const TextStyle(color: Colors.deepOrange))),
+    if (user != null) ...[
+      Card(child: ListTile(title: const Text('البريد الإلكتروني'), subtitle: Text(user!['email']?.toString() ?? ''))),
+      const SizedBox(height: 16),
+      const Text('كفالاتي في السلة', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      Card(child: ListTile(
+        leading: const Icon(Icons.shopping_cart_outlined, color: Color(0xFF00652A)),
+        title: Text(widget.cartCount == null ? 'عرض سلة الكفالات' :
+          'عدد الكفالات في السلة: ' + widget.cartCount.toString()),
+        subtitle: const Text('راجع الأيتام والمبالغ قبل إتمام التبرع'),
+        trailing: const Icon(Icons.chevron_left),
+        onTap: widget.onOpenCart,
+      )),
+      const SizedBox(height: 14),
+      Row(children: [const Expanded(child: Text('كفالاتي وطلباتي', style: TextStyle(fontWeight: FontWeight.bold))),
+        IconButton(onPressed: busy ? null : loadOrders, icon: const Icon(Icons.refresh))]),
+      if (orders.isEmpty && error == null) const Card(child: ListTile(title: Text('لا تظهر طلبات مرتبطة بهذا الحساب حاليًا'), subtitle: Text('إذا كانت لديك طلبات سابقة، تواصل مع الجمعية للتحقق من ربطها بحسابك.'))),
+      for (final order in orders) if (order is Map) Card(child: ListTile(
+        title: Text('طلب رقم ' + (order['id']?.toString() ?? '')),
+        subtitle: Text('التاريخ: ' + (order['date']?.toString() ?? '') + ' | الحالة: ' + (order['status']?.toString() ?? '')),
+        trailing: Text((order['total']?.toString() ?? '') + ' ' + (order['currency']?.toString() ?? '')))),
+      OutlinedButton.icon(onPressed: busy ? null : logout, icon: const Icon(Icons.logout), label: const Text('تسجيل الخروج')),
+    ] else ...[
+      Text(mode == 'register' ? 'إنشاء حساب جديد' : mode == 'forgot' ? 'استعادة كلمة المرور' : 'تسجيل الدخول',
+        textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      if (mode == 'register') ...[
+        registrationField(name, 'الاسم الأول'),
+        registrationField(lastName, 'الاسم الأخير'),
+        registrationField(phone, 'رقم الهاتف', keyboard: TextInputType.phone),
+        registrationField(country, 'الدولة / المنطقة'),
+        registrationField(state, 'المحافظة / الولاية'),
+        registrationField(city, 'المدينة'),
+        registrationField(address, 'عنوان الشارع والحي'),
+        registrationField(address2, 'رقم الشقة أو الوحدة', optional: true),
+        registrationField(postcode, 'الرمز البريدي', optional: true),
+        const Text('تأكيد الهاتف عبر SMS يتطلب تفعيل خدمة التحقق على الخادم.', style: TextStyle(fontSize: 12)),
+        const SizedBox(height: 12),
+      ],
+      TextField(controller: email, keyboardType: TextInputType.emailAddress,
+        decoration: const InputDecoration(labelText: 'البريد الإلكتروني', border: OutlineInputBorder())),
+      if (mode != 'forgot') ...[
+        const SizedBox(height: 12),
+        TextField(controller: password, obscureText: true,
+          decoration: const InputDecoration(labelText: 'كلمة المرور', border: OutlineInputBorder())),
+      ],
+      if (mode == 'register') ...[
+        const SizedBox(height: 12),
+        TextField(controller: confirmPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور *', border: OutlineInputBorder())),
+      ],
+      const SizedBox(height: 16),
+      FilledButton(onPressed: busy ? null : submit,
+        child: Text(mode == 'register' ? 'إنشاء الحساب' : mode == 'forgot' ? 'إرسال رابط الاستعادة' : 'دخول')),
+      TextButton(onPressed: busy ? null : () => setState(() { mode = mode == 'register' ? 'login' : 'register'; error = null; }),
+        child: Text(mode == 'register' ? 'لدي حساب' : 'إنشاء حساب جديد')),
+      TextButton(onPressed: busy ? null : () => setState(() { mode = mode == 'forgot' ? 'login' : 'forgot'; error = null; }),
+        child: Text(mode == 'forgot' ? 'العودة لتسجيل الدخول' : 'نسيت كلمة المرور؟')),
+      const Text('يمكنك تصفح التطبيق كزائر دون تسجيل الدخول', textAlign: TextAlign.center),
+    ],
+  ]);
+}
+).hasMatch(phone.text.trim()) &&
+      password.text.length >= 12 && password.text == confirmPassword.text;
+
+  Widget registrationField(TextEditingController controller, String label,
+      {TextInputType keyboard = TextInputType.text, bool optional = false}) =>
+    Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller, keyboardType: keyboard,
+        decoration: InputDecoration(
+          labelText: optional ? '$label (اختياري)' : '$label *',
+          border: const OutlineInputBorder(),
+        ),
+      ),
+    );
 
   Future<void> submit() async {
     if (busy) return;
