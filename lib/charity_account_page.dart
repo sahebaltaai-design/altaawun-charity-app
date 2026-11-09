@@ -118,28 +118,8 @@ class _AccountState extends State<CharityAccountPage> {
     if (busy || token == null) return;
     if ([name, lastName, phone, country, state, city, address]
         .any((field) => field.text.trim().isEmpty) ||
-        !RegExp(r'^\\+?[0-9 ()-]{7,20} [name, lastName, phone, country, state, city, address]
-      .every((field) => field.text.trim().isNotEmpty) &&
-      RegExp(r'^\+?[0-9 ()-]{7,20}$').hasMatch(phone.text.trim()) &&
-      password.text.length >= 12 && password.text == confirmPassword.text;
-
-  Widget registrationField(TextEditingController controller, String label,
-      {TextInputType keyboard = TextInputType.text, bool optional = false}) =>
-    Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        controller: controller, keyboardType: keyboard,
-        decoration: InputDecoration(
-          labelText: optional ? '$label (اختياري)' : '$label *',
-          border: const OutlineInputBorder(),
-        ),
-      ),
-    );
-
-  Future<void> submit() async {
-    if (busy) return;
-    if (email.text.trim().isEmpty || (mode != 'forgot' && password.text.isEmpty) ||
-        (mode == 'register' && !validRegistration)) {
+        !RegExp(r'^\+?[0-9 ()-]{7,20}$').hasMatch(phone.text.trim()) ||
+        !RegExp(r'^[A-Z]{2}$').hasMatch(normalizedCountry)) {
       setState(() => error = 'أكمل جميع الحقول المطلوبة، وتأكد من رقم الهاتف وتطابق كلمتي المرور (12 حرفًا على الأقل)');
       return;
     }
