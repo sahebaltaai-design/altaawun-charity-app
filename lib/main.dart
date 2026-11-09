@@ -1,4 +1,5 @@
 import 'app_update_service.dart';
+import 'charity_home_photo.dart';
 import 'charity_about_content.dart';
 import 'charity_voice_assistant.dart';
 import 'charity_account_page.dart';
@@ -71,6 +72,7 @@ const green = Color(0xFF00642D);
 const deepGreen = Color(0xFF004521);
 const red = Color(0xFFB70922);
 const ivory = Color(0xFFF8F8F5);
+final charityHomePhotoBytes = base64Decode(charityHomePhotoBase64);
 
 final ValueNotifier<String> selectedAppFont = ValueNotifier('Cairo');
 final ValueNotifier<String> selectedAppFontSize = ValueNotifier('medium');
@@ -1726,9 +1728,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
 
   void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; _isSlideDestination = false; });
+  bool get _showHomeLanding => page == 0 && customPage == null && wpSelectedCategory == null && selectedItem == null && checkoutUrl == null;
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
+    appBar: _showHomeLanding ? null : AppBar(
       toolbarHeight: page == 0 ? 154 : 86,
       backgroundColor: Colors.white,
       foregroundColor: deepGreen,
@@ -1868,31 +1871,113 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     return Icons.folder_open;
   }
 
+  void _showHomeNotifications() => showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('الإشعارات'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('رمز الجهاز للاختبار عبر Firebase. لا يوجد سجل إشعارات محفوظ حتى الآن.'),
+        const SizedBox(height: 12),
+        SelectableText(_fcmToken ?? 'لم يتوفر رمز FCM بعد. تأكد من اتصال الإنترنت والسماح بالإشعارات.',
+          style: const TextStyle(fontSize: 12)),
+      ]),
+      actions: [TextButton(
+        onPressed: () => Navigator.of(dialogContext).pop(),
+        child: const Text('إغلاق'),
+      )],
+    ),
+  );
+
+  Widget _approvedHomeShowcase() => LayoutBuilder(
+    builder: (context, constraints) {
+      final compact = constraints.maxWidth < 365;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Column(children: [
+          const SizedBox(height: 12),
+          // Header layout matches the approved reference, instead of
+          // centering the logo above the association name.
+          Directionality(textDirection: TextDirection.ltr, child: Row(children: [
+            _Emblem(size: compact ? 66 : 80),
+            Container(width: 2, height: compact ? 62 : 74,
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              color: const Color(0xFF075C39)),
+            Expanded(child: Directionality(textDirection: TextDirection.rtl,
+              child: Column(mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center, children: [
+                  Text('جمعية التعاون الخيرية',
+                    maxLines: 2, textAlign: TextAlign.center,
+                    style: TextStyle(color: const Color(0xFF075C39),
+                      fontSize: compact ? 14 : 17, fontWeight: FontWeight.w900, height: 1.3)),
+                  const SizedBox(height: 3),
+                  Text('نصنع لهم مستقبلًا أفضل',
+                    maxLines: 2, textAlign: TextAlign.center,
+                    style: TextStyle(color: const Color(0xFF075C39),
+                      fontSize: compact ? 11 : 13, fontWeight: FontWeight.w600)),
+                ]))),
+            IconButton(
+              tooltip: 'الإشعارات', onPressed: _showHomeNotifications,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+              icon: const Icon(Icons.notifications_outlined, color: Color(0xFF075C39))),
+            Builder(builder: (headerContext) => IconButton(
+              tooltip: 'القائمة', onPressed: () => Scaffold.of(headerContext).openDrawer(),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+              icon: const Icon(Icons.menu, color: Color(0xFF075C39)))),
+          ])),
+          const SizedBox(height: 23),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: AspectRatio(
+              aspectRatio: 700 / 272,
+              child: Image.memory(charityHomePhotoBytes,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Image.asset(
+                  'assets/home_hero.jpg', fit: BoxFit.cover)),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const FittedBox(fit: BoxFit.scaleDown, child: Text(
+            'معًا نصنع مستقبلًا أفضل',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFF075C39),
+              fontWeight: FontWeight.w900, fontSize: 24),
+          )),
+          const SizedBox(height: 8),
+          const Text('ساهم في تعليم الأطفال ورعاية الأيتام، وكن جزءًا من حكاية أمل جديدة.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Color(0xFF075C39), height: 1.55, fontSize: 13)),
+          const SizedBox(height: 17),
+          Row(children: [
+            Expanded(child: FilledButton(
+              onPressed: () => go(1),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                backgroundColor: const Color(0xFF075C39),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+              child: const Text('اكفل يتيمًا', style: TextStyle(fontWeight: FontWeight.w800)),
+            )),
+            const SizedBox(width: 10),
+            Expanded(child: FilledButton(
+              onPressed: () => go(3),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                backgroundColor: const Color(0xFFCDE7D8),
+                foregroundColor: const Color(0xFF075C39),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18))),
+              child: const Text('تبرع الآن', style: TextStyle(fontWeight: FontWeight.w800)),
+            )),
+          ]),
+          const SizedBox(height: 18),
+        ]),
+      );
+    },
+  );
+
   Widget _home() => ListView(padding: EdgeInsets.zero, children: [
-    const SizedBox(height: 12),
-    if (_appSlides.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: _remoteSlider()) else Padding(padding: const EdgeInsets.symmetric(horizontal: 12), child: ClipRRect(borderRadius: BorderRadius.circular(18), child: SizedBox(height: 240, child: Stack(fit: StackFit.expand, children: [
-      Image.asset(
-        'assets/home_hero.jpg',
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const DecoratedBox(decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [Color(0xFF194B2F), Color(0xFF00642D)]))),
-      ),
-      const DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
-        begin: Alignment.centerLeft, end: Alignment.centerRight,
-        colors: [Colors.transparent, Color(0xE8004C29)]))),
-      Positioned(top: 28, right: 18, child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, children: const [
-          Text('بكفالتك\nنمنحهم\nمستقبلًا أفضل',
-            style: TextStyle(fontSize: 29, color: Colors.white, fontWeight: FontWeight.w900, height: 1.3)),
-        ],
-      )),
-      Positioned(bottom: 18, right: 18, child: FilledButton.icon(
-        onPressed: () => go(1),
-        style: FilledButton.styleFrom(backgroundColor: green, side: const BorderSide(color: Colors.white)),
-        icon: const Icon(Icons.favorite_border), label: const Text('كفالة يتيم',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-      )),
-    ])))),
+    _approvedHomeShowcase(),
     Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
