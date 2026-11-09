@@ -1074,7 +1074,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   double _remoteSize(dynamic value,double fallback,double min,double max) => value is num ? value.toDouble().clamp(min,max) : fallback;
   Widget _remoteTileIcon(Map<String,dynamic> category,double fallback) {
     final tile=_remoteTile(category); final size=_remoteSize(tile['icon_size'],fallback,24,100);
-    final color=Color(wpCategoryIconColors[_wpKey(category)] ?? (_remoteColor(tile['icon_color'])?.value ?? 0xFF00642D));
+    final color=Color(wpCategoryIconColors[_wpKey(category)] ?? 0xFF075C39);
     final url=tile['image_url'];
     final fallbackIcon=Icon(_remoteIcons[tile['icon']] ?? _categoryIcon(category['name'].toString()),size:size,color:color);
     if(url is String && url.startsWith('https://')) return Image.network(url,width:size,height:size,fit:BoxFit.contain,errorBuilder:(_,__,___)=>fallbackIcon);
@@ -1106,11 +1106,14 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     Color(0xFF163C8C), Color(0xFF663399), Color(0xFFFFFFFF),
   ];
   static const _tileColors = <Color>[
-    Colors.white, Color(0xFFE0F2E9), Color(0xFFFFE9E9),
-    Color(0xFFFFF1D5), Color(0xFFE6EEFF), Color(0xFFF0E6FF),
-    Color(0xFFE0F5F5), Color(0xFFFFE6F0),
+    Color(0xFFE3F2E9), Color(0xFFCDE7D8), Color(0xFFF8F7F1),
   ];
-  Color _tileColor(Map<String, dynamic> category) => Color(wpCategoryColors[_wpKey(category)] ?? 0xFFFFFFFF);
+  Color _tileColor(Map<String, dynamic> category) {
+    final custom = wpCategoryColors[_wpKey(category)];
+    if (custom != null) return Color(custom);
+    final index = _orderedWpCategories.indexOf(category);
+    return _tileColors[(index < 0 ? 0 : index) % _tileColors.length];
+  }
   String _wpKey(Map<String, dynamic> c) => '${c['type']}:${c['id']}';
   List<Map<String, dynamic>> get _orderedWpCategories {
     final items = [...wpCategories]..sort((a,b) {
@@ -1428,6 +1431,14 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   Future<void> _loadCategorySettings() async {
     final prefs = await SharedPreferences.getInstance();
+    // Reset legacy saved tile overrides once (including former yellow).
+    // Subsequent manual customization remains persistent.
+    if (!(prefs.getBool('home_palette_nov2026_migrated') ?? false)) {
+      await prefs.remove('home_wp_category_colors');
+      await prefs.remove('home_wp_category_text_colors');
+      await prefs.remove('home_wp_category_icon_colors');
+      await prefs.setBool('home_palette_nov2026_migrated', true);
+    }
     final savedOrder = prefs.getStringList('home_category_order');
     final savedTileSize = prefs.getString('home_tile_size') ?? 'medium';
     final parsed = savedOrder?.map(int.tryParse).whereType<int>().toList();
@@ -1619,7 +1630,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                           icon: Icon(Icons.palette, color: Color(wpCategoryColors[key] ?? 0xFF006633)),
                           onPressed: () async {
                             final chosen = await _pickCustomColor(
-                              Color(wpCategoryColors[key] ?? 0xFFE3F5E9),
+                              Color(wpCategoryColors[key] ?? 0xFFE3F2E9),
                               'لون خلفية المربع',
                             );
                             if (chosen == null || !mounted) return;
@@ -1630,10 +1641,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                         ),
                         IconButton(
                           tooltip: 'اختيار لون الكتابة',
-                          icon: Icon(Icons.format_color_text, color: Color(wpCategoryTextColors[key] ?? 0xFF111111)),
+                          icon: Icon(Icons.format_color_text, color: Color(wpCategoryTextColors[key] ?? 0xFF075C39)),
                           onPressed: () async {
                             final chosen = await _pickCustomColor(
-                              Color(wpCategoryTextColors[key] ?? 0xFF111111),
+                              Color(wpCategoryTextColors[key] ?? 0xFF075C39),
                               'لون كتابة المربع',
                             );
                             if (chosen == null || !mounted) return;
@@ -1718,23 +1729,20 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      toolbarHeight: page == 0 ? 128 : 86,
+      toolbarHeight: page == 0 ? 154 : 86,
       backgroundColor: Colors.white,
       foregroundColor: deepGreen,
       leading: Builder(builder: (context) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(context).openDrawer())),
       titleSpacing: 0,
-      title: page == 0 ? const FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.center,
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          _Emblem(size: 66),
-          SizedBox(height: 3),
-          Text('جمعية التعاون الخيرية', maxLines: 1,
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-          Text('مدرسة الأيتام وكفالتهم', maxLines: 1,
-            style: TextStyle(fontSize: 12)),
-        ]),
-      ) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      title: page == 0 ? const Column(mainAxisSize: MainAxisSize.min, children: [
+        // Keep emblem at its intended size; shrink text only if necessary.
+        _Emblem(size: 86),
+        SizedBox(height: 3),
+        FittedBox(fit: BoxFit.scaleDown, child: Text('جمعية التعاون الخيرية',
+          maxLines: 1, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900))),
+        FittedBox(fit: BoxFit.scaleDown, child: Text('مدرسة الأيتام وكفالتهم',
+          maxLines: 1, style: TextStyle(fontSize: 12))),
+      ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       actions: [IconButton(
         tooltip: 'سلة الكفالات والتبرعات',
         onPressed: _openCart,
@@ -1894,7 +1902,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         children: [
           for (final category in _orderedWpCategories)
             Material(
-              color: wpCategoryColors.containsKey(_wpKey(category)) ? _tileColor(category) : (_remoteColor(_remoteTile(category)['background']) ?? const [Color(0xFFE3F5E9), Color(0xFFFFEDD8), Color(0xFFF0E4FF), Color(0xFFE1EDFF), Color(0xFFFFE3EC), Color(0xFFE7F6EF)][_orderedWpCategories.indexOf(category) % 6]),
+              color: _tileColor(category),
               borderRadius: BorderRadius.circular(14),
               child: InkWell(
                 borderRadius: BorderRadius.circular(14),
@@ -1910,7 +1918,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                       textAlign: TextAlign.center,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: _homeTileSize == 'small' ? 11 : (_homeTileSize == 'large' ? 18 : 14), fontWeight: FontWeight.bold, color: Color(wpCategoryTextColors[_wpKey(category)] ?? (_remoteColor(_remoteTile(category)['text_color'])?.value ?? 0xFF111111))))),
+                      style: TextStyle(fontSize: _homeTileSize == 'small' ? 11 : (_homeTileSize == 'large' ? 18 : 14), fontWeight: FontWeight.bold, color: Color(wpCategoryTextColors[_wpKey(category)] ?? 0xFF075C39)))),
                   ),
                 ]),
               ),
