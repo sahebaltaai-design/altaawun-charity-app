@@ -2228,6 +2228,26 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             onTap: () => _checkUpdate(manual: true),
           ),
           const Divider(),
+          FutureBuilder(
+            future: AppUpdateService.installedVersion(),
+            builder: (context, snapshot) {
+              final info = snapshot.data;
+              final version = info == null ? '—' : info.version;
+              final build = info == null ? '—' : info.buildNumber;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Column(children: [
+                  Text('الإصدار: $version   |   رقم البناء: $build',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.black54)),
+                  const SizedBox(height: 6),
+                  const Text('By Saheb Altaai',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: green, fontWeight: FontWeight.w600)),
+                ]),
+              );
+            },
+          ),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: Text('يمكن تغيير هذه الخيارات في أي وقت.', style: TextStyle(color: Colors.black54)),
