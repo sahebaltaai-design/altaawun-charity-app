@@ -406,7 +406,8 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           }
         },
       ))
-      ..loadRequest(Uri.parse(widget.url));
+      ;
+    _loadCheckoutWithAccount(widget.url);
   }
   // Remove unrelated site chrome only while the embedded cart/checkout is open.
   // Keep WooCommerce forms, payment gateways, and order details untouched.
@@ -443,7 +444,15 @@ class _CheckoutContentState extends State<_CheckoutContent> {
       '.site-info, .footer-widgets, .ast-footer-wrap, .site-below-footer-wrap,',
       '.sidebar, #secondary, .widget-area, .related.products, .up-sells,',
       '.woocommerce-breadcrumb, .scroll-to-top, .back-to-top {display:none!important;}',
-      'body {overflow-x:hidden!important;}',
+      'html,body {overflow-x:hidden!important;max-width:100%!important;}',
+      'body.woocommerce-checkout .site-content, body.woocommerce-checkout main,',
+      'body.woocommerce-checkout .woocommerce, body.woocommerce-checkout form.checkout,',
+      'body.woocommerce-checkout .wc-block-checkout {box-sizing:border-box!important;max-width:100%!important;min-width:0!important;}',
+      'body.woocommerce-checkout input, body.woocommerce-checkout select,',
+      'body.woocommerce-checkout textarea {max-width:100%!important;box-sizing:border-box!important;}',
+      '@media(max-width:767px){body.woocommerce-checkout .col2-set .col-1,',
+      'body.woocommerce-checkout .col2-set .col-2, body.woocommerce-checkout #customer_details,',
+      'body.woocommerce-checkout #order_review {float:none!important;width:100%!important;max-width:100%!important;}}',
       '.site-content, .content-area, main, .woocommerce {max-width:100%!important;}'
     ].join(' ');
     document.head.appendChild(style);
