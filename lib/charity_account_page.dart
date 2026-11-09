@@ -74,6 +74,32 @@ class _AccountState extends State<CharityAccountPage> {
     finally { if (mounted) setState(() => busy = false); }
   }
 
+  // WooCommerce stores ISO 3166-1 alpha-2 country codes, not display names.
+  String get normalizedCountry {
+    final value = country.text.trim();
+    final normalized = value.toLowerCase();
+    const known = <String, String>{
+      'العراق': 'IQ', 'iraq': 'IQ', 'iq': 'IQ',
+      'الولايات المتحدة': 'US', 'الولايات المتحدة الأمريكية': 'US',
+      'united states': 'US', 'usa': 'US', 'us': 'US',
+      'المملكة المتحدة': 'GB', 'united kingdom': 'GB', 'gb': 'GB',
+    };
+    return known[normalized] ?? value.toUpperCase();
+  }
+
+  String accountValue(String key) {
+    final billing = user?['billing'];
+    final nested = billing is Map ? billing[key] : null;
+    return (nested ?? user?['billing_$key'] ?? user?[key] ?? '').toString();
+  }
+
+  Widget accountDetail(String label, String value) => Card(
+    child: ListTile(
+      title: Text(label),
+      subtitle: Text(value.trim().isEmpty ? 'غير مسجل' : value),
+    ),
+  );
+
   bool get validRegistration => [name, lastName, phone, country, state, city, address]
       .every((field) => field.text.trim().isNotEmpty) &&
       RegExp(r'^\+?[0-9 ()-]{7,20}$').hasMatch(phone.text.trim()) &&
@@ -103,7 +129,7 @@ class _AccountState extends State<CharityAccountPage> {
     try {
       final current = mode;
       final fields = current == 'forgot' ? {'email': email.text.trim()} :
-        current == 'register' ? {'email': email.text.trim(), 'password': password.text, 'name': '${name.text.trim()} ${lastName.text.trim()}', 'first_name': name.text.trim(), 'last_name': lastName.text.trim(), 'billing_first_name': name.text.trim(), 'billing_last_name': lastName.text.trim(), 'billing_phone': phone.text.trim(), 'billing_country': country.text.trim(), 'billing_state': state.text.trim(), 'billing_city': city.text.trim(), 'billing_address_1': address.text.trim(), 'billing_address_2': address2.text.trim(), 'billing_postcode': postcode.text.trim()} :
+        current == 'register' ? {'email': email.text.trim(), 'password': password.text, 'name': '${name.text.trim()} ${lastName.text.trim()}', 'first_name': name.text.trim(), 'last_name': lastName.text.trim(), 'billing_first_name': name.text.trim(), 'billing_last_name': lastName.text.trim(), 'billing_phone': phone.text.trim(), 'billing_country': normalizedCountry, 'billing_state': state.text.trim(), 'billing_city': city.text.trim(), 'billing_address_1': address.text.trim(), 'billing_address_2': address2.text.trim(), 'billing_postcode': postcode.text.trim()} :
         {'login': email.text.trim(), 'password': password.text};
       final result = await api(current == 'forgot' ? 'forgot-password' : current, body: fields);
       if (!mounted) return;
@@ -163,6 +189,19 @@ class _AccountState extends State<CharityAccountPage> {
       textAlign: TextAlign.center, style: const TextStyle(color: Colors.deepOrange))),
     if (user != null) ...[
       Card(child: ListTile(title: const Text('البريد الإلكتروني'), subtitle: Text(user!['email']?.toString() ?? ''))),
+      const SizedBox(height: 12),
+      const Text('بيانات الاتصال والعنوان', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+      accountDetail('الاسم الأول', accountValue('first_name')),
+      accountDetail('الاسم الأخير', accountValue('last_name')),
+      accountDetail('رقم الهاتف', accountValue('phone')),
+      accountDetail('الدولة (رمز WooCommerce)', accountValue('country')),
+      accountDetail('المحافظة / الولاية', accountValue('state')),
+      accountDetail('المدينة', accountValue('city')),
+      accountDetail('العنوان', accountValue('address_1')),
+      accountDetail('العنوان الإضافي', accountValue('address_2')),
+      accountDetail('الرمز البريدي', accountValue('postcode')),
+      const Text('هذه البيانات للعرض والتحقق. تعديلها يتطلب دعم تحديث الملف الشخصي في خادم ووردبريس.',
+        style: TextStyle(fontSize: 12)),
       const SizedBox(height: 16),
       const Text('كفالاتي في السلة', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       Card(child: ListTile(
