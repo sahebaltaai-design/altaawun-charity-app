@@ -32,11 +32,15 @@ class _AccountState extends State<CharityAccountPage> {
   String mode = 'login';
   bool busy = false;
   bool editingProfile = false;
+  bool changingPassword = false;
+  final currentPassword = TextEditingController();
+  final newPassword = TextEditingController();
+  final repeatNewPassword = TextEditingController();
 
   @override
   void initState() { super.initState(); restore(); }
   @override
-  void dispose() { email.dispose(); password.dispose(); name.dispose(); lastName.dispose(); confirmPassword.dispose(); phone.dispose(); country.dispose(); state.dispose(); city.dispose(); address.dispose(); address2.dispose(); postcode.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); password.dispose(); name.dispose(); lastName.dispose(); confirmPassword.dispose(); phone.dispose(); country.dispose(); state.dispose(); city.dispose(); address.dispose(); address2.dispose(); postcode.dispose(); currentPassword.dispose(); newPassword.dispose(); repeatNewPassword.dispose(); super.dispose(); }
 
   Future<Map<String, dynamic>> api(String path, {Map<String, String>? body, String? bearer}) async {
     final headers = <String, String>{'Accept': 'application/json'};
@@ -194,6 +198,40 @@ class _AccountState extends State<CharityAccountPage> {
     } finally { if (mounted) setState(() => busy = false); }
   }
 
+  Future<void> changePassword() async {
+    if (busy || token == null) return;
+    if (currentPassword.text.isEmpty || newPassword.text.length < 12 ||
+        newPassword.text != repeatNewPassword.text ||
+        newPassword.text == currentPassword.text) {
+      setState(() => error = 'تأكد من كلمة المرور الحالية، وأن الجديدة مختلفة وتتكون من 12 حرفًا على الأقل، وأن التأكيد مطابق.');
+      return;
+    }
+    setState(() { busy = true; error = null; });
+    try {
+      final result = await api('change-password', bearer: token, body: {
+        'current_password': currentPassword.text,
+        'new_password': newPassword.text,
+      });
+      final nextToken = result['token']?.toString();
+      if (result['success'] != true || nextToken == null || nextToken.isEmpty) {
+        throw Exception('لم يؤكد الخادم تغيير كلمة المرور.');
+      }
+      await storage.write(key: 'altaawun_token', value: nextToken);
+      currentPassword.clear();
+      newPassword.clear();
+      repeatNewPassword.clear();
+      if (mounted) setState(() {
+        token = nextToken;
+        changingPassword = false;
+        error = 'تم تغيير كلمة المرور بنجاح.';
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = 'لم يتم تغيير كلمة المرور: ' + e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> loadOrders() async {
     if (token == null) return;
     if (mounted) setState(() => error = null);
@@ -266,6 +304,27 @@ class _AccountState extends State<CharityAccountPage> {
         accountDetail('العنوان', accountValue('address_1')),
         accountDetail('العنوان الإضافي', accountValue('address_2')),
         accountDetail('الرمز البريدي', accountValue('postcode')),
+      ],
+      const SizedBox(height: 16),
+      Row(children: [
+        const Expanded(child: Text('أمان الحساب', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold))),
+        TextButton.icon(
+          onPressed: busy ? null : () => setState(() { changingPassword = !changingPassword; error = null; }),
+          icon: const Icon(Icons.lock_outline),
+          label: Text(changingPassword ? 'إلغاء' : 'تغيير كلمة المرور'),
+        ),
+      ]),
+      if (changingPassword) ...[
+        TextField(controller: currentPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'كلمة المرور الحالية', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: newPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة (12 حرفًا على الأقل)', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: repeatNewPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'تأكيد كلمة المرور الجديدة', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        FilledButton(onPressed: busy ? null : changePassword, child: const Text('حفظ كلمة المرور الجديدة')),
       ],
       const SizedBox(height: 16),
       const Text('كفالاتي في السلة', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
