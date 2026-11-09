@@ -303,7 +303,7 @@ class _CheckoutContentState extends State<_CheckoutContent> {
   bool _errorReported = false;
   static const _authStorage = FlutterSecureStorage();
   Future<void> _loadCheckoutWithAccount(String destination) async {
-    if (widget.allowSiteNavigation || !(Uri.tryParse(destination)?.path.toLowerCase().contains('/cart') ?? false)) {
+    if (widget.allowSiteNavigation || !RegExp(r'/(cart|checkout|order-pay)(/|$)').hasMatch(Uri.tryParse(destination)?.path.toLowerCase() ?? '')) {
       await controller.loadRequest(Uri.parse(destination));
       return;
     }
