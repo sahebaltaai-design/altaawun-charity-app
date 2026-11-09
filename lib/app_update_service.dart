@@ -110,9 +110,7 @@ class AppUpdateService {
             FilledButton(
               style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFF00642D)),
-              onPressed: storeUrl == null
-                  ? null
-                  : () => Navigator.of(dialogContext).pop(true),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
               child: const Text('تحديث الآن'),
             ),
           ],
@@ -124,7 +122,7 @@ class AppUpdateService {
       }
       // Avoid showing the same popup immediately after returning from Play.
       await prefs.setInt(reminderKey, now);
-      if (storeUrl != null && !await launchUrl(storeUrl,
+      if (!await launchUrl(storeUrl,
           mode: LaunchMode.externalApplication)) {
         if (context.mounted) {
           _message(context, 'تعذر فتح المتجر. افتح صفحة التطبيق في المتجر.');
