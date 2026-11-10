@@ -2414,32 +2414,21 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     ));
   }
 
-  Widget _accountPage() => Column(children: [
-    Expanded(child: CharityAccountPage(
-      cartCount: _cartCount,
-      onOpenCart: _openCart,
-      onSignedIn: () {
-        if (!mounted) return;
-        final pending = _pendingSponsorshipUrl;
-        setState(() {
-          _pendingSponsorshipUrl = null;
-          _cartRefreshKey++;
-          if (pending != null) checkoutUrl = pending;
-        });
-      },
-    )),
-    SafeArea(top: false, child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-      child: SizedBox(width: double.infinity, child: FilledButton.icon(
-        onPressed: _openAppSettings,
-        icon: const Icon(Icons.settings_outlined),
-        label: const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: Text('الإعدادات  Settings', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-        ),
-      )),
-    )),
-  ]);
+  // Keep the full height available for member registration. Settings remains
+  // available from the side menu instead of covering the submit button.
+  Widget _accountPage() => CharityAccountPage(
+    cartCount: _cartCount,
+    onOpenCart: _openCart,
+    onSignedIn: () {
+      if (!mounted) return;
+      final pending = _pendingSponsorshipUrl;
+      setState(() {
+        _pendingSponsorshipUrl = null;
+        _cartRefreshKey++;
+        if (pending != null) checkoutUrl = pending;
+      });
+    },
+  );
 
   Widget _section() {
     final descriptions = [
