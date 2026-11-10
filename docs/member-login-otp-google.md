@@ -44,3 +44,12 @@ The app registration screen now requires both the calling code and a national ph
 **Backend work still required before rollout:** ensure the WordPress endpoints \`register\` and \`register-start\` both reject missing or malformed phone values and persist the verified normalized value to the same WordPress user and the WooCommerce billing phone field; preserve customer information for both app and website. Do not confuse this with email OTP, which proves control of an email address only. Make the checkout phone required, but keep postcode optional across all supported countries. If Google sign-in is enabled, prompt for a valid phone and complete server-side profile registration before permitting sponsorship checkout. Do not publish this as fully enforced until those server-side changes are tested.
 
 Staged on \`feature/otp-google-sponsorship-login\`; **not deployed** to the Play Store app or live WordPress site.
+
+
+## Automatic country suggestion and consent-based phone entry
+
+On the native registration screen, the app now preselects a calling code from the device's configured locale region (for example, `ar_IQ` → `+964`, `en_US` → `+1`). For recognized regions without a dedicated dropdown entry, `Other` is selected and the code is filled in. If the region is unknown, the user must choose or enter the prefix; locale is only a hint and can be manually changed.
+
+The phone input advertises Android/iOS OS autofill hints, which can offer a saved phone number when supported. **It does not read the SIM phone number or retrieve a phone number secretly.** The user can choose an offered number or type it, and must confirm before account creation. If autofill provides a full `+countrycode` number, the app avoids repeating the selected prefix. Only basic E.164 format checks are implemented; no verification that the person controls the phone number is claimed.
+
+Test the platform autofill behavior on actual Android and iOS devices, plus non-Iraq locales, before shipping. This is still a staged change, not a verified downloadable APK.
