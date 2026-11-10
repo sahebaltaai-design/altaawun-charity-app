@@ -177,7 +177,7 @@ jobs:
           PY
 
       - name: Configure release signing for Play Store
-        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        if: ${{ github.ref == 'refs/heads/main' && env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -212,7 +212,7 @@ jobs:
           PY
 
       - name: Build signed Play Store AAB
-        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        if: ${{ github.ref == 'refs/heads/main' && env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -221,7 +221,7 @@ jobs:
         run: flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha --dart-define=ALTAWUN_GOOGLE_WEB_CLIENT_ID=${{ vars.ALTAWUN_GOOGLE_WEB_CLIENT_ID }} --dart-define=ALTAWUN_GOOGLE_IOS_CLIENT_ID=${{ vars.ALTAWUN_GOOGLE_IOS_CLIENT_ID }}
 
       - name: Upload signed Play Store AAB
-        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        if: ${{ github.ref == 'refs/heads/main' && env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
