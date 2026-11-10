@@ -35,3 +35,12 @@ The Flutter client is prepared, but **Google login is not active yet**.
 - A paired **Altaawun Email Verification 1.0.0** WordPress add-on is provided separately as a ZIP for staging installation.
 - Site-side WooCommerce registration UI is a separate integration task; the WordPress add-on currently covers REST registration for the app.
 - This branch has not been built or tested on a physical device.
+
+
+## Mandatory country dial code + mobile (2026-11-10)
+
+The app registration screen now requires both the calling code and a national phone number for **all email registration paths**, including legacy registration when the OTP capability is off. Iraq (+964) is selected by default; common countries are listed, with an "Other" field for additional calling codes. It submits one normalized international phone string as the \`phone\` value, e.g. \`+9647701234567\`; the app performs basic numeric E.164 sanity checks only, **not SMS verification or definitive country-specific validation**.
+
+**Backend work still required before rollout:** ensure the WordPress endpoints \`register\` and \`register-start\` both reject missing or malformed phone values and persist the verified normalized value to the same WordPress user and the WooCommerce billing phone field; preserve customer information for both app and website. Do not confuse this with email OTP, which proves control of an email address only. Make the checkout phone required, but keep postcode optional across all supported countries. If Google sign-in is enabled, prompt for a valid phone and complete server-side profile registration before permitting sponsorship checkout. Do not publish this as fully enforced until those server-side changes are tested.
+
+Staged on \`feature/otp-google-sponsorship-login\`; **not deployed** to the Play Store app or live WordPress site.
