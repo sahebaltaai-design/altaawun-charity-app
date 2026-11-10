@@ -7,7 +7,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 class CharityAccountPage extends StatefulWidget {
   final int? cartCount;
   final VoidCallback onOpenCart;
-  const CharityAccountPage({super.key, required this.cartCount, required this.onOpenCart});
+  final VoidCallback? onSignedIn;
+  const CharityAccountPage({super.key, required this.cartCount, required this.onOpenCart, this.onSignedIn});
   @override
   State<CharityAccountPage> createState() => _AccountState();
 }
@@ -55,6 +56,10 @@ class _AccountState extends State<CharityAccountPage> {
         'rate_limited': 'محاولات كثيرة، حاول لاحقًا',
         'invalid_fields': 'تأكد من البيانات وكلمة المرور (12 حرفًا على الأقل)',
         'session_expired': 'انتهت الجلسة، سجل الدخول مرة أخرى',
+        'invalid_code': 'رمز التحقق غير صحيح',
+        'code_expired': 'انتهت صلاحية الرمز. اطلب رمزًا جديدًا',
+        'email_delivery_failed': 'تعذر إرسال البريد. تحقق من إعدادات بريد الموقع',
+        'email_unverified': 'يجب تأكيد البريد الإلكتروني أولًا',
       };
       throw Exception(messages[code] ?? 'فشل الاتصال: ' + response.statusCode.toString());
     }
@@ -92,6 +97,7 @@ class _AccountState extends State<CharityAccountPage> {
       pendingEmail = null;
     });
     await loadOrders();
+    widget.onSignedIn?.call();
   }
 
   Future<void> googleLogin() async {
