@@ -20,6 +20,45 @@ class _AccountState extends State<CharityAccountPage> {
   final password = TextEditingController();
   final name = TextEditingController();
   final phone = TextEditingController();
+  final customDialCode = TextEditingController();
+  String dialCode = '+964';
+
+  static const Map<String, String> countryDialCodes = {
+    '+964': '🇮🇶 العراق (+964)',
+    '+1': '🇺🇸 أمريكا وكندا (+1)',
+    '+44': '🇬🇧 بريطانيا (+44)',
+    '+966': '🇸🇦 السعودية (+966)',
+    '+971': '🇦🇪 الإمارات (+971)',
+    '+965': '🇰🇼 الكويت (+965)',
+    '+974': '🇶🇦 قطر (+974)',
+    '+973': '🇧🇭 البحرين (+973)',
+    '+968': '🇴🇲 عُمان (+968)',
+    '+962': '🇯🇴 الأردن (+962)',
+    '+961': '🇱🇧 لبنان (+961)',
+    '+963': '🇸🇾 سوريا (+963)',
+    '+970': '🇵🇸 فلسطين (+970)',
+    '+20': '🇪🇬 مصر (+20)',
+    '+98': '🇮🇷 إيران (+98)',
+    '+90': '🇹🇷 تركيا (+90)',
+    '+49': '🇩🇪 ألمانيا (+49)',
+    '+33': '🇫🇷 فرنسا (+33)',
+    '+39': '🇮🇹 إيطاليا (+39)',
+    '+46': '🇸🇪 السويد (+46)',
+    '+61': '🇦🇺 أستراليا (+61)',
+    'other': '🌐 دولة أخرى (إدخال المفتاح)',
+  };
+
+  String? normalizedPhone() {
+    final prefix = (dialCode == 'other' ? customDialCode.text : dialCode).trim();
+    if (!RegExp(r'^\+[1-9][0-9]{0,3}$').hasMatch(prefix)) return null;
+    var local = phone.text.trim().replaceAll(RegExp(r'[\s().-]'), '');
+    if (!RegExp(r'^[0-9]+$').hasMatch(local)) return null;
+    if (prefix == '+964' && local.startsWith('0')) local = local.substring(1);
+    final full = prefix + local;
+    // Basic E.164 format check, not verification of phone ownership.
+    if (!RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(full)) return null;
+    return full;
+  }
   final otpCode = TextEditingController();
   static const googleWebClientId = String.fromEnvironment('ALTAWUN_GOOGLE_WEB_CLIENT_ID');
   static const googleIosClientId = String.fromEnvironment('ALTAWUN_GOOGLE_IOS_CLIENT_ID');
@@ -36,7 +75,7 @@ class _AccountState extends State<CharityAccountPage> {
   @override
   void initState() { super.initState(); restore(); checkAuthCapabilities(); }
   @override
-  void dispose() { email.dispose(); password.dispose(); name.dispose(); phone.dispose(); otpCode.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); password.dispose(); name.dispose(); phone.dispose(); customDialCode.dispose(); otpCode.dispose(); super.dispose(); }
 
   Future<Map<String, dynamic>> api(String path, {Map<String, String>? body, String? bearer}) async {
     final headers = <String, String>{'Accept': 'application/json'};
@@ -182,9 +221,12 @@ class _AccountState extends State<CharityAccountPage> {
   Future<void> submit() async {
     if (busy) return;
     if (email.text.trim().isEmpty || (mode != 'forgot' && password.text.isEmpty) ||
-        (mode == 'register' && (name.text.trim().isEmpty || password.text.length < 12 ||
-          (supportsEmailOtp && phone.text.trim().isEmpty)))) {
+        (mode == 'register' && (name.text.trim().isEmpty || password.text.length < 12))) {
       setState(() => error = 'أكمل البيانات المطلوبة؛ كلمة مرور التسجيل 12 حرفًا على الأقل');
+      return;
+    }
+    if (mode == 'register' && normalizedPhone() == null) {
+      setState(() => error = 'أدخل رقم الهاتف مع مفتاح الدولة الدولي بشكل صحيح (إلزامي).');
       return;
     }
     setState(() { busy = true; error = null; });
@@ -193,7 +235,7 @@ class _AccountState extends State<CharityAccountPage> {
       final fields = current == 'forgot' ? {'email': email.text.trim()} :
         current == 'register' ? {
           'email': email.text.trim(), 'password': password.text,
-          'name': name.text.trim(), if (supportsEmailOtp) 'phone': phone.text.trim()
+          'name': name.text.trim(), 'phone': normalizedPhone()!
         } : {'login': email.text.trim(), 'password': password.text};
       final route = current == 'forgot' ? 'forgot-password'
           : current == 'register' && supportsEmailOtp ? 'register-start' : current;
@@ -282,11 +324,42 @@ class _AccountState extends State<CharityAccountPage> {
       if (mode == 'register') ...[
         TextField(controller: name, decoration: const InputDecoration(labelText: 'الاسم', border: OutlineInputBorder())),
         const SizedBox(height: 12),
-        if (supportsEmailOtp) ...[
-          TextField(controller: phone, keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'رقم الهاتف (إلزامي)', border: OutlineInputBorder())),
+        DropdownButtonFormField<String>(
+          value: dialCode,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'مفتاح الدولة الدولي *', border: OutlineInputBorder(),
+          ),
+          items: countryDialCodes.entries.map((entry) =>
+            DropdownMenuItem<String>(value: entry.key,
+              child: Text(entry.value, overflow: TextOverflow.ellipsis))).toList(),
+          onChanged: (value) {
+            if (value != null) setState(() => dialCode = value);
+          },
+        ),
+        const SizedBox(height: 12),
+        if (dialCode == 'other') ...[
+          TextField(
+            controller: customDialCode,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'مفتاح الاتصال الدولي (مثال +212) *',
+              border: OutlineInputBorder(),
+            ),
+          ),
           const SizedBox(height: 12),
         ],
+        TextField(
+          controller: phone,
+          keyboardType: TextInputType.phone,
+          autofillHints: const [AutofillHints.telephoneNumberNational],
+          decoration: const InputDecoration(
+            labelText: 'رقم الهاتف بدون مفتاح الدولة *',
+            hintText: 'مثال للعراق: 07701234567',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
       ],
       if (mode == 'verify') ...[
         Text('أرسلنا رمز التحقق إلى ${pendingEmail ?? ''}', textAlign: TextAlign.center),
