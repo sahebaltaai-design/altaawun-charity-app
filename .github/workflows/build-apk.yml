@@ -217,7 +217,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
+        run: flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha --dart-define=ALTAWUN_GOOGLE_WEB_CLIENT_ID=${{ vars.ALTAWUN_GOOGLE_WEB_CLIENT_ID }} --dart-define=ALTAWUN_GOOGLE_IOS_CLIENT_ID=${{ vars.ALTAWUN_GOOGLE_IOS_CLIENT_ID }}
 
       - name: Upload signed Play Store AAB
         if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
@@ -232,7 +232,7 @@ jobs:
           path: build/app/outputs/bundle/release/app-release.aab
 
       - name: Build APK
-        run: flutter build apk --debug --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
+        run: flutter build apk --debug --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha --dart-define=ALTAWUN_GOOGLE_WEB_CLIENT_ID=${{ vars.ALTAWUN_GOOGLE_WEB_CLIENT_ID }} --dart-define=ALTAWUN_GOOGLE_IOS_CLIENT_ID=${{ vars.ALTAWUN_GOOGLE_IOS_CLIENT_ID }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
