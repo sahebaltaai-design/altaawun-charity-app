@@ -91,14 +91,23 @@ class _AccountState extends State<CharityAccountPage> {
   String? normalizedPhone() {
     final prefix = (dialCode == 'other' ? customDialCode.text : dialCode).trim();
     if (!RegExp(r'^\+[1-9][0-9]{0,3}$').hasMatch(prefix)) return null;
+
     var local = phone.text.trim().replaceAll(RegExp(r'[\s().-]'), '');
-    // Phone autofill may offer an international +countrycode number.
-    // Accept it only when it matches the selected calling code so that
-    // the prefix is not appended twice.
+    // The phone's autofill can provide the full international number.
     if (local.startsWith('+')) {
       if (!local.startsWith(prefix)) return null;
-      return RegExp(r'^\+[1-9][0-9]{7,14}
+      local = local.substring(prefix.length);
+    }
+    if (!RegExp(r'^[0-9]+$').hasMatch(local)) return null;
+    if (prefix == '+964' && local.startsWith('0')) {
+      local = local.substring(1);
+    }
+    final full = prefix + local;
+    // Basic E.164 syntax check; phone ownership is not verified here.
+    if (!RegExp(r'^\+[1-9][0-9]{7,14}$').hasMatch(full)) return null;
+    return full;
   }
+
   final otpCode = TextEditingController();
   static const googleWebClientId = String.fromEnvironment('ALTAWUN_GOOGLE_WEB_CLIENT_ID');
   static const googleIosClientId = String.fromEnvironment('ALTAWUN_GOOGLE_IOS_CLIENT_ID');
