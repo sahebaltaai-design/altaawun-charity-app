@@ -96,6 +96,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Analyze member account screen
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/charity_account_page.dart
+
       - name: Enable Android core library desugaring
         run: |
           python3 - <<'PY'
