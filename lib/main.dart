@@ -321,9 +321,12 @@ class _CheckoutContent extends StatefulWidget {
 class _CheckoutContentState extends State<_CheckoutContent> {
   late final WebViewController controller;
   bool _errorReported = false;
+  String? _afterBridgeDestination;
   static const _authStorage = FlutterSecureStorage();
   Future<void> _loadCheckoutWithAccount(String destination) async {
-    if (widget.allowSiteNavigation || !(Uri.tryParse(destination)?.path.toLowerCase().contains('/cart') ?? false)) {
+    final path = Uri.tryParse(destination)?.path.toLowerCase() ?? '';
+    _afterBridgeDestination = null;
+    if (widget.allowSiteNavigation || !(path.contains('/cart') || path.contains('/checkout'))) {
       await controller.loadRequest(Uri.parse(destination));
       return;
     }
@@ -339,6 +342,14 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           final bridgeUrl = Uri.tryParse((payload['url'] ?? '').toString());
           if (bridgeUrl != null && bridgeUrl.scheme == 'https' &&
               (bridgeUrl.host == 'www.aytamaliraq.com' || bridgeUrl.host == 'aytamaliraq.com')) {
+            // Complete authentication in the embedded WooCommerce WebView first.
+            // A selected add-to-cart product or direct checkout must be loaded
+            // AFTER the bridge sets its WordPress/WooCommerce session cookie.
+            final requested = Uri.parse(destination);
+            if (requested.queryParameters.containsKey('add-to-cart') ||
+                requested.path.toLowerCase().contains('/checkout')) {
+              _afterBridgeDestination = destination;
+            }
             await controller.loadRequest(bridgeUrl);
             return;
           }
@@ -405,6 +416,12 @@ class _CheckoutContentState extends State<_CheckoutContent> {
         onPageFinished: (url) {
           final uri = Uri.tryParse(url);
           if (uri != null && (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
+            final next = _afterBridgeDestination;
+            if (next != null) {
+              _afterBridgeDestination = null;
+              controller.loadRequest(Uri.parse(next));
+              return;
+            }
             if (widget.allowSiteNavigation) {
               controller.runJavaScript(_slideDetailDisplayScript);
             } else {
