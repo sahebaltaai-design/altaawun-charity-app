@@ -1133,6 +1133,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   String wpSelectedType = 'category';
   Map<String, dynamic>? selectedItem;
   String? checkoutUrl;
+  String? _pendingSponsorshipUrl;
   bool _isSlideDestination = false;
   static const String _site = 'https://aytamaliraq.com';
 
@@ -1216,7 +1217,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         final path = uri.path.toLowerCase();
         final isDonation = path.contains('/checkout') || path.contains('/cart') ||
             path.contains('/order-pay') || uri.queryParameters.containsKey('add-to-cart');
-        if (isDonation) setState(() => checkoutUrl = url);
+        if (isDonation) _startSponsorship(url);
       })),
       if (isProduct) FilledButton.icon(
         onPressed: valid ? () {
@@ -1227,7 +1228,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           final target = productId != null && productId > 0 && productType == 'simple'
               ? 'https://www.aytamaliraq.com/cart/?add-to-cart=$productId'
               : link;
-          setState(() => checkoutUrl = target);
+          _startSponsorship(target);
         } : null,
         icon: const Icon(Icons.shopping_cart_outlined), label: const Text('اختيار الكفالة وإضافتها للسلة')),
     ]);
@@ -1721,6 +1722,34 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         },
       ),
     ));
+  }
+
+  Future<void> _startSponsorship(String target) async {
+    // Preserve the selected orphan/product while member signs in. Existing
+    // accounts continue directly; guests may choose to sign in or continue.
+    final saved = await const FlutterSecureStorage().read(key: 'altaawun_token');
+    if (!mounted) return;
+    if (saved != null && saved.isNotEmpty) {
+      setState(() => checkoutUrl = target);
+      return;
+    }
+    final signIn = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('إكمال كفالة اليتيم'),
+      content: const Text('يمكنك تسجيل الدخول بحسابك لحفظ الكفالات والطلبات، أو المتابعة كزائر.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('المتابعة كزائر')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('تسجيل الدخول أو إنشاء حساب')),
+      ],
+    ));
+    if (!mounted || signIn == null) return;
+    if (signIn) {
+      _pendingSponsorshipUrl = target;
+      go(7);
+    } else {
+      setState(() => checkoutUrl = target);
+    }
   }
 
   void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
@@ -2369,7 +2398,19 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   }
 
   Widget _accountPage() => Column(children: [
-    Expanded(child: CharityAccountPage(cartCount: _cartCount, onOpenCart: _openCart)),
+    Expanded(child: CharityAccountPage(
+      cartCount: _cartCount,
+      onOpenCart: _openCart,
+      onSignedIn: () {
+        if (!mounted) return;
+        final pending = _pendingSponsorshipUrl;
+        setState(() {
+          _pendingSponsorshipUrl = null;
+          _cartRefreshKey++;
+          if (pending != null) checkoutUrl = pending;
+        });
+      },
+    )),
     SafeArea(top: false, child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
       child: SizedBox(width: double.infinity, child: FilledButton.icon(
