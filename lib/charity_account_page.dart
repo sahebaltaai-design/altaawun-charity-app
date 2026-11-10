@@ -338,6 +338,11 @@ class _AccountState extends State<CharityAccountPage> {
       textAlign: TextAlign.center, style: const TextStyle(color: Colors.deepOrange))),
     if (user != null) ...[
       Card(child: ListTile(title: const Text('البريد الإلكتروني'), subtitle: Text(user!['email']?.toString() ?? ''))),
+      if ((user!['phone'] ?? user!['billing_phone'] ?? '').toString().trim().isNotEmpty)
+        Card(child: ListTile(
+          title: const Text('رقم الهاتف المحفوظ في حساب الجمعية'),
+          subtitle: Text((user!['phone'] ?? user!['billing_phone']).toString()),
+        )),
       const SizedBox(height: 16),
       const Text('كفالاتي في السلة', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       Card(child: ListTile(
