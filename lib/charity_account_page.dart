@@ -155,8 +155,8 @@ class _AccountState extends State<CharityAccountPage> {
         supportsGoogleLogin = data['google_login'] == true && googleWebClientId.isNotEmpty;
       });
     } catch (_) {
-      // Keep the existing working email/password flow while the new WordPress
-      // extension is not installed or configured.
+      // Existing account login remains available, but registration cannot
+      // bypass mandatory email verification.
     }
   }
 
@@ -269,6 +269,13 @@ class _AccountState extends State<CharityAccountPage> {
       setState(() => error = 'أدخل رقم الهاتف مع مفتاح الدولة الدولي بشكل صحيح (إلزامي).');
       return;
     }
+    // An unavailable verification service must not silently allow account signup.
+    if (mode == 'register' && !supportsEmailOtp) {
+      setState(() => error =
+        'خدمة تأكيد البريد غير متاحة مؤقتًا. تأكد من اتصال الإنترنت وحاول مرة أخرى.');
+      await checkAuthCapabilities();
+      return;
+    }
     setState(() { busy = true; error = null; });
     try {
       final current = mode;
@@ -278,12 +285,12 @@ class _AccountState extends State<CharityAccountPage> {
           'name': name.text.trim(), 'phone': normalizedPhone()!
         } : {'login': email.text.trim(), 'password': password.text};
       final route = current == 'forgot' ? 'forgot-password'
-          : current == 'register' && supportsEmailOtp ? 'register-start' : current;
+          : current == 'register' ? 'register-start' : current;
       final result = await api(route, body: fields);
       if (!mounted) return;
       if (current == 'forgot') {
         setState(() { mode = 'login'; error = 'إذا كان البريد مسجلًا، ستصلك رسالة الاستعادة'; });
-      } else if (current == 'register' && supportsEmailOtp) {
+      } else if (current == 'register') {
         setState(() {
           pendingEmail = email.text.trim();
           mode = 'verify';
