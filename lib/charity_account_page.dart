@@ -18,7 +18,8 @@ class _AccountState extends State<CharityAccountPage> {
   static const storage = FlutterSecureStorage();
   final email = TextEditingController();
   final password = TextEditingController();
-  final name = TextEditingController();
+  final firstName = TextEditingController();
+  final lastName = TextEditingController();
   final phone = TextEditingController();
   final customDialCode = TextEditingController();
   String dialCode = '+964';
@@ -124,7 +125,7 @@ class _AccountState extends State<CharityAccountPage> {
   @override
   void initState() { super.initState(); suggestDialCodeFromDevice(); restore(); checkAuthCapabilities(); }
   @override
-  void dispose() { email.dispose(); password.dispose(); name.dispose(); phone.dispose(); customDialCode.dispose(); otpCode.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); password.dispose(); firstName.dispose(); lastName.dispose(); phone.dispose(); customDialCode.dispose(); otpCode.dispose(); super.dispose(); }
 
   Future<Map<String, dynamic>> api(String path, {Map<String, String>? body, String? bearer}) async {
     final headers = <String, String>{'Accept': 'application/json'};
@@ -269,9 +270,23 @@ class _AccountState extends State<CharityAccountPage> {
 
   Future<void> submit() async {
     if (busy) return;
-    if (email.text.trim().isEmpty || (mode != 'forgot' && password.text.isEmpty) ||
-        (mode == 'register' && (name.text.trim().isEmpty || password.text.length < 12))) {
-      setState(() => error = 'أكمل البيانات المطلوبة؛ كلمة مرور التسجيل 12 حرفًا على الأقل');
+    if (mode == 'register' &&
+        (firstName.text.trim().isEmpty || lastName.text.trim().isEmpty)) {
+      setState(() => error =
+        'الاسم الأول والاسم الأخير مطلوبان فقط دون حد أدنى لعدد الأحرف.');
+      return;
+    }
+    if (email.text.trim().isEmpty) {
+      setState(() => error = 'أدخل البريد الإلكتروني.');
+      return;
+    }
+    if (mode != 'forgot' && password.text.isEmpty) {
+      setState(() => error = 'أدخل كلمة المرور.');
+      return;
+    }
+    if (mode == 'register' && password.text.length < 12) {
+      setState(() => error =
+        'كلمة المرور يجب أن تتكون من 12 رمزًا على الأقل؛ هذا الشرط لا ينطبق على الاسم.');
       return;
     }
     if (mode == 'register' && normalizedPhone() == null) {
@@ -291,7 +306,10 @@ class _AccountState extends State<CharityAccountPage> {
       final fields = current == 'forgot' ? {'email': email.text.trim()} :
         current == 'register' ? {
           'email': email.text.trim(), 'password': password.text,
-          'name': name.text.trim(), 'phone': normalizedPhone()!
+          'name': '${firstName.text.trim()} ${lastName.text.trim()}',
+          'first_name': firstName.text.trim(),
+          'last_name': lastName.text.trim(),
+          'phone': normalizedPhone()!
         } : {'login': email.text.trim(), 'password': password.text};
       final route = current == 'forgot' ? 'forgot-password'
           : current == 'register' ? 'register-start' : current;
@@ -383,7 +401,21 @@ class _AccountState extends State<CharityAccountPage> {
         textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
       if (mode == 'register') ...[
-        TextField(controller: name, decoration: const InputDecoration(labelText: 'الاسم', border: OutlineInputBorder())),
+        TextField(
+          controller: firstName,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'الاسم الأول *', border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: lastName,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            labelText: 'الاسم الأخير *', border: OutlineInputBorder(),
+          ),
+        ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           value: dialCode,
