@@ -22,6 +22,48 @@ class _AccountState extends State<CharityAccountPage> {
   final phone = TextEditingController();
   final customDialCode = TextEditingController();
   String dialCode = '+964';
+  bool usedDeviceCountrySuggestion = false;
+
+  // Locale region is an initial suggestion, not proof of phone ownership.
+  // Users can always change the country calling code before registration.
+  static const Map<String, String> regionDialCodes = {
+    'IQ': '+964', 'US': '+1', 'CA': '+1', 'GB': '+44',
+    'SA': '+966', 'AE': '+971', 'KW': '+965', 'QA': '+974',
+    'BH': '+973', 'OM': '+968', 'JO': '+962', 'LB': '+961',
+    'SY': '+963', 'PS': '+970', 'EG': '+20', 'IR': '+98',
+    'TR': '+90', 'DE': '+49', 'FR': '+33', 'IT': '+39',
+    'SE': '+46', 'AU': '+61', 'NZ': '+64', 'NL': '+31',
+    'BE': '+32', 'CH': '+41', 'AT': '+43', 'ES': '+34',
+    'PT': '+351', 'IN': '+91', 'PK': '+92', 'BD': '+880',
+    'MA': '+212', 'DZ': '+213', 'TN': '+216', 'LY': '+218',
+    'YE': '+967', 'SD': '+249', 'KE': '+254', 'NG': '+234',
+    'ZA': '+27', 'MY': '+60', 'ID': '+62', 'PH': '+63',
+    'JP': '+81', 'KR': '+82', 'CN': '+86', 'MX': '+52',
+    'BR': '+55', 'AR': '+54', 'RU': '+7', 'UA': '+380',
+  };
+
+  void suggestDialCodeFromDevice() {
+    final deviceLocales = WidgetsBinding.instance.platformDispatcher.locales;
+    for (final locale in deviceLocales) {
+      final region = locale.countryCode?.toUpperCase();
+      if (region == null || region.isEmpty) continue;
+      final suggestedCode = regionDialCodes[region];
+      if (suggestedCode == null) {
+        // Unknown countries must be selected explicitly rather than
+        // silently assigned the Iraqi default number prefix.
+        dialCode = 'other';
+        return;
+      }
+      usedDeviceCountrySuggestion = true;
+      if (countryDialCodes.containsKey(suggestedCode)) {
+        dialCode = suggestedCode;
+      } else {
+        dialCode = 'other';
+        customDialCode.text = suggestedCode;
+      }
+      return;
+    }
+  }
 
   static const Map<String, String> countryDialCodes = {
     '+964': '🇮🇶 العراق (+964)',
@@ -73,7 +115,7 @@ class _AccountState extends State<CharityAccountPage> {
   bool busy = false;
 
   @override
-  void initState() { super.initState(); restore(); checkAuthCapabilities(); }
+  void initState() { super.initState(); suggestDialCodeFromDevice(); restore(); checkAuthCapabilities(); }
   @override
   void dispose() { email.dispose(); password.dispose(); name.dispose(); phone.dispose(); customDialCode.dispose(); otpCode.dispose(); super.dispose(); }
 
@@ -337,6 +379,12 @@ class _AccountState extends State<CharityAccountPage> {
             if (value != null) setState(() => dialCode = value);
           },
         ),
+        const SizedBox(height: 6),
+        const Text(
+          'يُقترح مفتاح الدولة من إعدادات الهاتف ويمكن تغييره. '
+          'يمكن تعبئة رقم الهاتف من اقتراحات النظام بعد موافقتك.',
+          style: TextStyle(fontSize: 12, color: Colors.black54),
+        ),
         const SizedBox(height: 12),
         if (dialCode == 'other') ...[
           TextField(
@@ -352,7 +400,7 @@ class _AccountState extends State<CharityAccountPage> {
         TextField(
           controller: phone,
           keyboardType: TextInputType.phone,
-          autofillHints: const [AutofillHints.telephoneNumberNational],
+          autofillHints: const [AutofillHints.telephoneNumberNational, AutofillHints.telephoneNumber],
           decoration: const InputDecoration(
             labelText: 'رقم الهاتف بدون مفتاح الدولة *',
             hintText: 'مثال للعراق: 07701234567',
