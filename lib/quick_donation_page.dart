@@ -136,6 +136,15 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
             ? amountSource.whereType<num>().map((n) => n.toInt()).toList()
             : <int>[];
         final rate = (options['usd_to_iqd_rate'] as num?)?.toDouble() ?? 0;
+        final rateSource = options['usd_rate_source'] == 'cbi_auto'
+            ? 'البنك المركزي العراقي — تحديث تلقائي'
+            : 'السعر الاحتياطي المعتمد من الجمعية';
+        final rateChecked = (options['usd_rate_updated_at'] as num?)?.toInt() ?? 0;
+        final rateDate = rateChecked > 0
+            ? DateTime.fromMillisecondsSinceEpoch(rateChecked * 1000).toLocal()
+            : null;
+        final rateDateLabel = rateDate == null ? '' :
+            '${rateDate.year}-${rateDate.month.toString().padLeft(2, '0')}-${rateDate.day.toString().padLeft(2, '0')}';
         final typedAmount = customAmount.text.trim().isNotEmpty
             ? int.tryParse(customAmount.text.trim()) : chosenAmount;
         final estimatedIqd = typedAmount == null ? null
@@ -269,9 +278,13 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
               if (isUsd && rate > 0) Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text('سعر الصرف الذي اعتمدته الجمعية: 1 USD = ' +
+                  Text('1 USD = ' +
                     rate.toStringAsFixed(rate.truncateToDouble() == rate ? 0 : 2) +
-                    ' IQD', style: const TextStyle(color: _green)),
+                    ' IQD', style: const TextStyle(color: _green,
+                    fontWeight: FontWeight.bold)),
+                  Text('مصدر السعر: ' + rateSource +
+                    (rateDateLabel.isEmpty ? '' : ' — آخر تحقق: ' + rateDateLabel),
+                    style: const TextStyle(fontSize: 12, color: Colors.black54)),
                   if (estimatedIqd != null && estimatedIqd > 0)
                     Text('المبلغ المطلوب دفعه: ' + estimatedIqd.toString() +
                         ' دينار عراقي', style: const TextStyle(
