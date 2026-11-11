@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Altaawun Quick Donation
  * Description: تفعيل أو تعطيل زر تبرع الآن في تطبيق الجمعية، مع التصنيفات والمبالغ والدفع عبر WooCommerce.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: Altaawun Charity
  * Requires Plugins: woocommerce
  */
@@ -83,9 +83,15 @@ register_activation_hook(__FILE__, static function () {
     if (!get_option(ALTA_QD_OPTION)) add_option(ALTA_QD_OPTION, alta_qd_defaults(), '', false);
     alta_qd_create_product();
 });
+// The visible quick donation form is controlled ONLY by the administrator's
+// on/off switch. Connecting a real payment gateway is a separate stage.
 function alta_qd_enabled() {
-    return class_exists('WooCommerce')
-        && !empty(alta_qd_options()['enabled'])
+    return !empty(alta_qd_options()['enabled']);
+}
+
+function alta_qd_checkout_ready() {
+    return alta_qd_enabled()
+        && class_exists('WooCommerce')
         && alta_qd_product_id() > 0
         && count(alta_qd_categories()) > 0
         && count(alta_qd_payment_methods()) > 0;
@@ -161,7 +167,7 @@ function alta_qd_admin_page() {
     if (!current_user_can('manage_options')) return;
     $config = alta_qd_options();
     echo '<div class="wrap"><h1>التبرع السريع — تطبيق الجمعية</h1>';
-    echo '<p>تفعيل زر «تبرع الآن» أو إخفاؤه دون تحديث التطبيق. لن يظهر الزر للمستخدم حتى تُفعّل بوابة دفع إلكتروني واحدة على الأقل وتُحدد هنا.</p>';
+    echo '<p>زر «تبرع الآن» يظهر بمجرد تفعيله، حتى لو لم تُربط بوابات الدفع بعد. يبقى زر إتمام الدفع معطلاً حتى تفعيل بوابة حقيقية.</p>';
     if (!class_exists('WooCommerce')) echo '<div class="notice notice-error"><p>يجب تفعيل WooCommerce أولًا.</p></div>';
     echo '<form method="post" action="options.php">';
     settings_fields('alta_qd_group');
@@ -195,6 +201,8 @@ function alta_qd_admin_page() {
     submit_button('حفظ إعدادات التبرع السريع');
     echo '</form><p>حالة الواجهة: <strong>'
         . (alta_qd_enabled() ? 'مفعّلة' : 'معطلة') . '</strong></p>';
+    echo '<p>حالة الدفع: <strong>'
+        . (alta_qd_checkout_ready() ? 'جاهز من ناحية إعدادات النظام — اختبر بوابات الدفع قبل الإطلاق' : 'غير مفعّل حتى إعداد بوابة دفع فعلية') . '</strong></p>';
     echo '</div>';
 }
 add_action('rest_api_init', static function () {
@@ -210,22 +218,26 @@ add_action('rest_api_init', static function () {
                     $categories[] = array('id' => $key, 'name' => $name);
                 }
             }
-            return rest_ensure_response(array(
-                'enabled' => (bool)$enabled, 'categories' => $categories,
+            $response = rest_ensure_response(array(
+                'enabled' => (bool)$enabled,
+                'checkout_ready' => (bool)alta_qd_checkout_ready(),
+                'categories' => $categories,
                 'amounts' => $enabled ? alta_qd_amounts() : array(),
                 'min_amount' => $minimum, 'max_amount' => $maximum,
                 'currency' => function_exists('get_woocommerce_currency')
                     ? get_woocommerce_currency() : 'USD',
-                'payment_methods' => array_values(alta_qd_payment_methods()),
+                'payment_methods' => $enabled ? array_values(alta_qd_payment_methods()) : array(),
             ));
+            $response->header('Cache-Control', 'no-store, private, max-age=0');
+            return $response;
         },
     ));
     register_rest_route('altaawun/v1', '/quick-donation/prepare', array(
         'methods' => WP_REST_Server::CREATABLE,
         'permission_callback' => '__return_true',
         'callback' => static function (WP_REST_Request $request) {
-            if (!alta_qd_enabled()) {
-                return new WP_Error('donations_unavailable', 'خدمة التبرع السريع غير مفعلة.', array('status' => 503));
+            if (!alta_qd_checkout_ready()) {
+                return new WP_Error('donations_unavailable', 'التبرع السريع ظاهر للمعاينة لكن الدفع غير مفعّل حتى ربط بوابة إلكترونية.', array('status' => 503));
             }
             $category = sanitize_key((string)$request->get_param('category'));
             $categories = alta_qd_categories();
@@ -265,7 +277,7 @@ add_action('rest_api_init', static function () {
 /** Consume a one-time, server-signed donation token on the WooCommerce web session. */
 add_action('template_redirect', static function () {
     if (!isset($_GET['altaawun_qd'], $_GET['qd_sig'])) return;
-    if (!alta_qd_enabled() || !function_exists('WC') || !WC()->cart) {
+    if (!alta_qd_checkout_ready() || !function_exists('WC') || !WC()->cart) {
         wp_die(esc_html__('خدمة التبرع غير متاحة حاليًا. يرجى المحاولة لاحقًا.'), '', array('response' => 503));
     }
     $nonce = sanitize_text_field(wp_unslash($_GET['altaawun_qd']));
