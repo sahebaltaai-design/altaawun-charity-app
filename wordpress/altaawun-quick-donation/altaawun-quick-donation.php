@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Altaawun Quick Donation
  * Description: تفعيل أو تعطيل زر تبرع الآن في تطبيق الجمعية، مع التصنيفات والمبالغ والدفع عبر WooCommerce.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Altaawun Charity
  * Requires Plugins: woocommerce
  */
@@ -17,6 +17,12 @@ function alta_qd_defaults() {
         'enabled' => 0,
         'categories' => "general|التبرعات العامة\norphans|كفالة الأيتام\neducation|المدرسة والتعليم\nfood|السلة الغذائية",
         'amounts' => '',
+        // Use WooCommerce's actual gateway IDs. Nothing is shown to a donor
+        // until a gateway is installed, enabled and mapped by the administrator.
+        'gateway_visa' => '',
+        'gateway_mastercard' => '',
+        'gateway_zaincash' => '',
+        'gateway_qicard' => '',
     );
 }
 function alta_qd_options() {
@@ -101,9 +107,42 @@ function alta_qd_clean_settings($raw) {
         'categories' => $categories ? implode("\n", $categories) : alta_qd_defaults()['categories'],
         'amounts' => isset($raw['amounts'])
             ? substr(preg_replace('/[^0-9,; ]/', '', (string)$raw['amounts']), 0, 200) : '',
+        'gateway_visa' => sanitize_key($raw['gateway_visa'] ?? ''),
+        'gateway_mastercard' => sanitize_key($raw['gateway_mastercard'] ?? ''),
+        'gateway_zaincash' => sanitize_key($raw['gateway_zaincash'] ?? ''),
+        'gateway_qicard' => sanitize_key($raw['gateway_qicard'] ?? ''),
     );
     if ($clean['enabled']) alta_qd_create_product();
     return $clean;
+}
+
+/** The payment provider plugin owns money collection and signed callbacks. */
+function alta_qd_active_gateways() {
+    if (!function_exists('WC') || !WC() || !WC()->payment_gateways()) return array();
+    $list = array();
+    foreach (WC()->payment_gateways()->payment_gateways() as $gateway) {
+        if (!is_object($gateway) || empty($gateway->id) || $gateway->enabled !== 'yes') continue;
+        $list[sanitize_key($gateway->id)] = wp_strip_all_tags($gateway->get_title());
+    }
+    return $list;
+}
+function alta_qd_payment_methods() {
+    $map = array(
+        'visa' => array('label'=>'Visa', 'key'=>'gateway_visa'),
+        'mastercard' => array('label'=>'Mastercard', 'key'=>'gateway_mastercard'),
+        'zaincash' => array('label'=>'زين كاش', 'key'=>'gateway_zaincash'),
+        'qicard' => array('label'=>'كي كارد', 'key'=>'gateway_qicard'),
+    );
+    $active = alta_qd_active_gateways();
+    $config = alta_qd_options();
+    $result = array();
+    foreach ($map as $id => $item) {
+        $gateway = sanitize_key($config[$item['key']] ?? '');
+        if ($gateway && isset($active[$gateway])) {
+            $result[$id] = array('id'=>$id, 'name'=>$item['label'], 'gateway'=>$gateway);
+        }
+    }
+    return $result;
 }
 add_action('admin_init', static function () {
     register_setting('alta_qd_group', ALTA_QD_OPTION, array(
@@ -132,7 +171,24 @@ function alta_qd_admin_page() {
     echo '<tr><th>المبالغ السريعة</th><td><input class="regular-text" name="' . esc_attr(ALTA_QD_OPTION)
         . '[amounts]" value="' . esc_attr($config['amounts']) . '" placeholder="5000,10000,25000,50000">'
         . '<p class="description">افصل المبالغ بفاصلة؛ اتركها فارغة لاستخدام القيم الافتراضية حسب عملة WooCommerce.</p></td></tr>';
-    echo '</tbody></table>';
+    $gateways = alta_qd_active_gateways();
+    echo '<tr><th>طرق الدفع المتاحة</th><td><p class="description">يظهر الخيار داخل التطبيق فقط إذا ربطته ببوابة WooCommerce مثبتة ومفعّلة. يمكن ربط Visa وMastercard بنفس بوابة QiCard إن أكد مزود الدفع دعمهما. لا تضع بيانات دخول حساسة هنا.</p>';
+    $choices = array(
+      'gateway_visa'=>'Visa', 'gateway_mastercard'=>'Mastercard',
+      'gateway_zaincash'=>'زين كاش', 'gateway_qicard'=>'كي كارد'
+    );
+    foreach ($choices as $key => $label) {
+        echo '<p><label>' . esc_html($label) . ' <select name="'
+          . esc_attr(ALTA_QD_OPTION) . '[' . esc_attr($key) . ']">';
+        echo '<option value="">غير مفعّل</option>';
+        foreach ($gateways as $gateway_id => $title) {
+            echo '<option value="' . esc_attr($gateway_id) . '"'
+               . selected($config[$key] ?? '', $gateway_id, false) . '>'
+               . esc_html($title . ' (' . $gateway_id . ')') . '</option>';
+        }
+        echo '</select></label></p>';
+    }
+    echo '</td></tr></tbody></table>';
     submit_button('حفظ إعدادات التبرع السريع');
     echo '</form><p>حالة الواجهة: <strong>'
         . (alta_qd_enabled() ? 'مفعّلة' : 'معطلة') . '</strong></p>';
@@ -157,6 +213,7 @@ add_action('rest_api_init', static function () {
                 'min_amount' => $minimum, 'max_amount' => $maximum,
                 'currency' => function_exists('get_woocommerce_currency')
                     ? get_woocommerce_currency() : 'USD',
+                'payment_methods' => array_values(alta_qd_payment_methods()),
             ));
         },
     ));
@@ -178,12 +235,19 @@ add_action('rest_api_init', static function () {
             if ($amount < $min || $amount > $max || !isset($categories[$category])) {
                 return new WP_Error('invalid_donation', 'التصنيف أو المبلغ غير صالح.', array('status' => 400));
             }
+            $method_id = sanitize_key((string)$request->get_param('payment_method'));
+            $methods = alta_qd_payment_methods();
+            if (!isset($methods[$method_id])) {
+                return new WP_Error('invalid_payment', 'طريقة الدفع غير مفعّلة.', array('status' => 400));
+            }
             $notes = sanitize_textarea_field((string)$request->get_param('notes'));
             $nonce = wp_generate_password(32, false, false);
             set_transient('alta_qd_' . $nonce, array(
                 'amount' => $amount, 'category' => $category,
                 'label' => $categories[$category],
                 'notes' => substr($notes, 0, 500),
+                'payment_method' => $method_id,
+                'gateway' => $methods[$method_id]['gateway'],
             ), ALTA_QD_SESSION_TTL);
             $signature = hash_hmac('sha256', $nonce, wp_salt('auth'));
             $link = add_query_arg(array('altaawun_qd' => $nonce,
@@ -230,6 +294,13 @@ add_action('template_redirect', static function () {
     if (!$added) {
         wp_die('تعذر إضافة التبرع إلى السلة. يرجى المحاولة مرة أخرى.', '', array('response' => 400));
     }
+    // Preselect only the currently configured/enabled gateway; the checkout
+    // still performs the provider's secure authorization and webhook flow.
+    $methods = alta_qd_payment_methods();
+    $selected_method = sanitize_key($payload['payment_method'] ?? '');
+    if (isset($methods[$selected_method]) && WC()->session) {
+        WC()->session->set('chosen_payment_method', $methods[$selected_method]['gateway']);
+    }
     wp_safe_redirect(wc_get_checkout_url());
     exit;
 }, 5);
@@ -250,7 +321,9 @@ add_action('woocommerce_before_calculate_totals', static function ($cart) {
         list($min,$max) = alta_qd_limits();
         $amount = is_array($qd) ? absint($qd['amount'] ?? 0) : 0;
         if ($amount < $min || $amount > $max || !isset(alta_qd_categories()[$qd['category'] ?? ''])) {
-            $item['data']->set_price($min);
+            // Fail closed: an invalid donation must never be checked out at
+            // an unintended placeholder amount.
+            $cart->remove_cart_item($item['key'] ?? '');
             continue;
         }
         $item['data']->set_price($amount);
