@@ -1,0 +1,27 @@
+name: Package Quick Donation WordPress Plugin
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - feature/otp-google-sponsorship-login
+    paths:
+      - 'wordpress/altaawun-quick-donation/**'
+      - '.github/workflows/package-quick-donation.yml'
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint WordPress plugin
+        run: php -l wordpress/altaawun-quick-donation/altaawun-quick-donation.php
+      - name: Package installable WordPress plugin
+        run: |
+          mkdir -p dist
+          cd wordpress
+          zip -r ../dist/altaawun-quick-donation-v1.1.0.zip altaawun-quick-donation
+      - uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-quick-donation-wordpress-v1.1.0
+          path: dist/altaawun-quick-donation-v1.1.0.zip
