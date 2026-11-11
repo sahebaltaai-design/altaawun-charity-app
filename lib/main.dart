@@ -226,6 +226,11 @@ class ProductDetailScreen extends StatelessWidget {
         ],
         const SizedBox(height: 26),
         FilledButton.icon(
+          style: FilledButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
           onPressed: validLink ? () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => DonationWebScreen(url: link))) : null,
           icon: const Icon(Icons.volunteer_activism),
@@ -2147,6 +2152,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           style: FilledButton.styleFrom(
             backgroundColor: const Color(0xFF075C39),
             padding: const EdgeInsets.symmetric(vertical: 15),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
           onPressed: _openQuickDonation,
           icon: const Icon(Icons.volunteer_activism_outlined),
@@ -2605,6 +2613,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF075C39),
               padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             icon: const Icon(Icons.volunteer_activism_outlined),
             label: const Text('تبرع الآن'),
