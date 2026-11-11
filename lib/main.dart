@@ -1,5 +1,6 @@
 import 'app_update_service.dart';
 import 'member_backup_service.dart';
+import 'quick_donation_page.dart';
 import 'charity_about_content.dart';
 import 'charity_voice_assistant.dart';
 import 'charity_account_page.dart';
@@ -752,6 +753,40 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   int? _cartCount;
   int _cartRefreshKey = 0;
+  bool _quickDonationEnabled = false;
+
+  Future<void> _loadQuickDonationStatus() async {
+    bool enabled = false;
+    try {
+      final response = await http.get(
+        Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun/v1/quick-donation'),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final raw = jsonDecode(utf8.decode(response.bodyBytes));
+        enabled = raw is Map && raw['enabled'] == true;
+      }
+    } catch (_) {}
+    if (mounted && _quickDonationEnabled != enabled) {
+      setState(() => _quickDonationEnabled = enabled);
+    }
+  }
+
+  void _openQuickDonation() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => QuickDonationPage(
+        onCheckout: (url) {
+          if (!mounted) return;
+          setState(() {
+            checkoutUrl = url;
+            selectedItem = null;
+            wpSelectedCategory = null;
+            _isSlideDestination = false;
+            _cartRefreshKey++;
+          });
+        },
+      ),
+    ));
+  }
   String? _fcmToken;
   String _notificationTone = 'urgent';
   bool _notificationVibration = true;
@@ -1411,6 +1446,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   void initState() {
     super.initState();
     _loadAppSlides();
+    _loadQuickDonationStatus();
     unawaited(_loadCategorySettings().then((_) async { await _syncMemberPreferences(); }));
     _restoreRemoteTiles();
     _loadNotificationPreferences();
@@ -1443,6 +1479,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) {
       _loadWordPressCategories(silent: true);
       _loadRemoteTiles();
+      _loadQuickDonationStatus();
     }
   }
 
@@ -2014,7 +2051,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       surfaceTintColor: Colors.transparent,
       height: 72,
       selectedIndex: [0, 1, 4, 3, 7].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 7].indexOf(page),
-      onDestinationSelected: (index) => go([0, 1, 4, 3, 7][index]),
+      onDestinationSelected: (index) {
+        if (index == 1 && _quickDonationEnabled) {
+          _openQuickDonation();
+        } else {
+          go([0, 1, 4, 3, 7][index]);
+        }
+      },
       destinations: const [
         NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
         NavigationDestination(icon: Icon(Icons.favorite_border), label: 'تبرع'),
@@ -2084,6 +2127,19 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       )),
     ])))),
     Padding(padding: const EdgeInsets.all(12), child: Column(children: [
+      if (_quickDonationEnabled) Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: SizedBox(width: double.infinity, child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF075C39),
+            padding: const EdgeInsets.symmetric(vertical: 15),
+          ),
+          onPressed: _openQuickDonation,
+          icon: const Icon(Icons.volunteer_activism_outlined),
+          label: const Text('تبرع الآن', style: TextStyle(
+            fontSize: 18, fontWeight: FontWeight.bold)),
+        )),
+      ),
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
         crossAxisCount: _homeTileSize == 'small' ? 3 : (_homeTileSize == 'large' ? 1 : 2),
@@ -2238,6 +2294,14 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (_quickDonationEnabled) Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: FilledButton.icon(
+          onPressed: _openQuickDonation,
+          icon: const Icon(Icons.volunteer_activism_outlined),
+          label: const Text('تبرع الآن'),
+        ),
+      ),
       const Text('حالات التبرع والكفالة', style: TextStyle(
         fontSize: 21, fontWeight: FontWeight.bold, color: deepGreen)),
       const SizedBox(height: 12),
