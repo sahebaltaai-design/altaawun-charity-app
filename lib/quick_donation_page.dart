@@ -300,10 +300,16 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
               if (isUsd && rate > 0) Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text('1 USD = ' +
-                    rate.toStringAsFixed(rate.truncateToDouble() == rate ? 0 : 2) +
-                    ' IQD', style: const TextStyle(color: _green,
-                    fontWeight: FontWeight.bold)),
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text('1 USD = ' +
+                        rate.toStringAsFixed(rate.truncateToDouble() == rate ? 0 : 2) +
+                        ' IQD', style: const TextStyle(color: _green,
+                        fontWeight: FontWeight.bold)),
+                    ),
+                  ),
                   Text('مصدر السعر: ' + rateSource +
                     (rateDateLabel.isEmpty ? '' : ' — آخر تحقق: ' + rateDateLabel),
                     style: const TextStyle(fontSize: 12, color: Colors.black54)),
