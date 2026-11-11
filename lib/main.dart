@@ -1,4 +1,5 @@
 import 'app_update_service.dart';
+import 'member_backup_service.dart';
 import 'charity_about_content.dart';
 import 'charity_voice_assistant.dart';
 import 'charity_account_page.dart';
@@ -831,6 +832,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setString('app_font', font);
                 await prefs.setString('app_font_size', size);
+                unawaited(MemberBackupService.saveChanges());
                 selectedAppFont.value = font;
                 selectedAppFontSize.value = size;
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
@@ -895,6 +897,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
               final prefs = await SharedPreferences.getInstance();
               await prefs.setString('notification_tone', selected);
               await prefs.setBool('notification_vibration', vibration);
+              unawaited(MemberBackupService.saveChanges());
               if (!mounted) return;
               setState(() { _notificationTone = selected; _notificationVibration = vibration; });
               try { await _syncNotificationToneTopic(); } catch (e) { debugPrint('Tone topic sync: $e'); }
@@ -1404,7 +1407,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   void initState() {
     super.initState();
     _loadAppSlides();
-    _loadCategorySettings();
+    unawaited(_loadCategorySettings().then((_) => _syncMemberPreferences()));
     _restoreRemoteTiles();
     _loadNotificationPreferences();
     _setupPush();
@@ -1500,6 +1503,26 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     });
   }
 
+  bool _memberBackupRunning = false;
+  Future<String> _syncMemberPreferences() async {
+    if (_memberBackupRunning) return 'busy';
+    _memberBackupRunning = true;
+    try {
+      final status = await MemberBackupService.synchronize();
+      if (status == 'restored' && mounted) {
+        await _loadCategorySettings();
+        await _loadNotificationPreferences();
+        final prefs = await SharedPreferences.getInstance();
+        selectedAppFont.value = prefs.getString('app_font') ?? 'Cairo';
+        selectedAppFontSize.value = prefs.getString('app_font_size') ?? 'medium';
+        if (mounted) setState(() {});
+      }
+      return status;
+    } finally {
+      _memberBackupRunning = false;
+    }
+  }
+
   Future<void> _saveCategorySettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('home_tile_size', _homeTileSize);
@@ -1514,6 +1537,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         hiddenCategories.map((id) => '$id').toList());
     await prefs.setStringList('home_custom_categories',
         customCategories.entries.map((e) => '${e.key}|${e.value}').toList());
+    unawaited(MemberBackupService.saveChanges());
   }
 
   void _addCategoryInline(String value, StateSetter refreshSheet) {
@@ -2378,6 +2402,25 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             onTap: _manageCategories,
           ),
           ListTile(
+            leading: const Icon(Icons.cloud_sync_outlined, color: green),
+            title: const Text('حفظ إعداداتي واستعادتها'),
+            subtitle: const Text('نسخة احتياطية لتفضيلاتك في حساب الجمعية؛ تتطلب تسجيل الدخول وتفعيل إضافة النسخ الاحتياطي في الموقع'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () async {
+              final status = await _syncMemberPreferences();
+              if (!settingsContext.mounted) return;
+              final message = switch (status) {
+                'restored' => 'تمت استعادة إعداداتك من حساب الجمعية.',
+                'saved' => 'تم حفظ إعداداتك في حساب الجمعية.',
+                'signed_out' => 'سجّل الدخول من «حسابي» لتفعيل النسخ الاحتياطي.',
+                'busy' => 'جارٍ مزامنة الإعدادات بالفعل.',
+                _ => 'تعذرت المزامنة. تأكد من تثبيت إضافة Altaawun Member Backup في ووردبريس واتصال الإنترنت.',
+              };
+              ScaffoldMessenger.of(settingsContext)
+                  .showSnackBar(SnackBar(content: Text(message)));
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.system_update_alt, color: green),
             title: const Text('التحقق من تحديث التطبيق'),
             subtitle: const Text('البحث عن أحدث إصدار متاح في المتجر'),
@@ -2421,6 +2464,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     onOpenCart: _openCart,
     onSignedIn: () {
       if (!mounted) return;
+      unawaited(_syncMemberPreferences());
       final pending = _pendingSponsorshipUrl;
       setState(() {
         _pendingSponsorshipUrl = null;
