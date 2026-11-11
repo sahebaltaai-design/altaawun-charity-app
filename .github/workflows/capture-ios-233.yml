@@ -1,0 +1,43 @@
+name: Capture iPhone App Store Screenshot
+on:
+  push:
+    branches: [screenshots/ios-233]
+    paths: [.github/workflows/capture-ios-233.yml]
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: macos-26-intel
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Boot iPhone Pro Max simulator
+        run: |
+          device="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; ds=[d for runtime in json.load(sys.stdin)["devices"].values() for d in runtime if d["name"] in ("iPhone 16 Pro Max","iPhone 17 Pro Max","iPhone 18 Pro Max")]; assert ds, "No supported Pro Max simulator"; print(ds[-1]["udid"])')"
+          echo "SIMULATOR_ID=$device" >> "$GITHUB_ENV"
+          xcrun simctl boot "$device"
+      - name: Build the app for iOS Simulator
+        run: |
+          flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
+          flutter pub get
+          flutter build ios --simulator --debug --no-codesign
+      - name: Capture the running app
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          app=build/ios/iphonesimulator/Runner.app
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")"
+          xcrun simctl status_bar "$SIMULATOR_ID" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --cellularMode active --cellularBars 4 --batteryState unplugged --batteryLevel 100
+          xcrun simctl install "$SIMULATOR_ID" "$app"
+          xcrun simctl launch "$SIMULATOR_ID" "$bundle_id"
+          sleep 30
+          mkdir -p screenshots
+          xcrun simctl io "$SIMULATOR_ID" screenshot screenshots/01-Altaawun-iPhone.png
+          sips -g pixelWidth -g pixelHeight screenshots/01-Altaawun-iPhone.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-iphone-screenshots
+          path: screenshots/*.png
+          if-no-files-found: error
