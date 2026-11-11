@@ -19,6 +19,7 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
   late Future<Map<String, dynamic>> config;
   final customAmount = TextEditingController();
   String? categoryId, methodId, message;
+  String selectedCurrency = 'IQD';
   int? chosenAmount;
   bool busy = false;
 
@@ -58,19 +59,29 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
     if (busy) return;
     final amount = customAmount.text.trim().isNotEmpty
         ? int.tryParse(customAmount.text.trim()) : chosenAmount;
-    final minimum = (options['min_amount'] as num?)?.toInt() ?? 1;
-    final maximum = (options['max_amount'] as num?)?.toInt() ?? 10000;
-    if (amount == null || amount < minimum || amount > maximum) {
-      setState(() => message = 'اختر مبلغًا بين ' + minimum.toString() +
-          ' و' + maximum.toString() + ' ' + (options['currency'] ?? '').toString());
+    final isUsd = selectedCurrency == 'USD';
+    final rate = (options['usd_to_iqd_rate'] as num?)?.toDouble() ?? 0;
+    final rateReady = options['usd_available'] == true && rate > 0;
+    if (isUsd && !rateReady) {
+      setState(() => message = 'سعر الصرف غير معتمد حاليًا. اختر الدينار العراقي.');
       return;
     }
+    final minimum = (options[isUsd ? 'usd_min_amount' : 'min_amount'] as num?)?.toInt() ?? 1;
+    final maximum = (options[isUsd ? 'usd_max_amount' : 'max_amount'] as num?)?.toInt() ?? 10000;
+    if (amount == null || amount < minimum || amount > maximum) {
+      setState(() => message = 'اختر مبلغًا بين ' + minimum.toString() +
+          ' و' + maximum.toString() + ' ' + selectedCurrency);
+      return;
+    }
+    final iqdAmount = isUsd ? (amount * rate).round() : amount;
     setState(() { busy = true; message = null; });
     try {
       final response = await http.post(Uri.parse(_base + '/prepare'),
           headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
           body: jsonEncode({
             'amount': amount.toString(),
+            'currency': selectedCurrency,
+            'expected_amount_iqd': iqdAmount.toString(),
             'category': category,
             'payment_method': payment,
           })).timeout(const Duration(seconds: 20));
@@ -86,8 +97,9 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
       Navigator.of(context).pop();
       widget.onCheckout(checkout.toString());
     } catch (_) {
-      if (mounted) setState(() => message =
-          'تعذر تجهيز التبرع. تأكد من الاتصال وإعدادات بوابة الدفع.');
+      if (mounted) setState(() {
+        message = 'تعذر تجهيز التبرع. ربما تغير سعر الصرف؛ أغلق الصفحة وأعد فتحها أو تحقق من بوابة الدفع.';
+      });
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -116,15 +128,24 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
         final options = snapshot.data!;
         final categories = choices(options['categories']);
         final methods = choices(options['payment_methods']);
-        final amounts = options['amounts'] is List
-            ? (options['amounts'] as List).whereType<num>().map((n) => n.toInt()).toList()
+        final usdAvailable = options['usd_available'] == true &&
+            options['usd_to_iqd_rate'] is num;
+        final isUsd = selectedCurrency == 'USD' && usdAvailable;
+        final amountSource = isUsd ? options['usd_amounts'] : options['amounts'];
+        final amounts = amountSource is List
+            ? amountSource.whereType<num>().map((n) => n.toInt()).toList()
             : <int>[];
+        final rate = (options['usd_to_iqd_rate'] as num?)?.toDouble() ?? 0;
+        final typedAmount = customAmount.text.trim().isNotEmpty
+            ? int.tryParse(customAmount.text.trim()) : chosenAmount;
+        final estimatedIqd = typedAmount == null ? null
+            : (isUsd ? (typedAmount * rate).round() : typedAmount);
         if (categories.isEmpty) return const Center(child: Text('لا توجد تصنيفات مفعلة.'));
         final category = categories.any((c) => c['id'] == categoryId)
             ? categoryId! : categories.first['id']!;
         final payment = methods.any((m) => m['id'] == methodId)
             ? methodId : null;
-        final currency = (options['currency'] ?? 'IQD').toString();
+        final currency = isUsd ? 'USD' : 'IQD';
         return ListView(padding: const EdgeInsets.all(16), children: [
           Card(elevation: 0, color: Colors.white, child: Padding(
             padding: const EdgeInsets.all(18),
@@ -150,6 +171,35 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
                 onChanged: (v) => setState(() => categoryId = v),
               ),
               const SizedBox(height: 22),
+              const Text('اختر العملة', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Wrap(spacing: 10, runSpacing: 8, children: [
+                ChoiceChip(
+                  label: const Text('دينار عراقي IQD'),
+                  selected: !isUsd,
+                  onSelected: (_) => setState(() {
+                    selectedCurrency = 'IQD';
+                    chosenAmount = null;
+                    customAmount.clear();
+                    message = null;
+                  }),
+                ),
+                ChoiceChip(
+                  label: const Text('دولار أمريكي USD'),
+                  selected: isUsd,
+                  onSelected: usdAvailable ? (_) => setState(() {
+                    selectedCurrency = 'USD';
+                    chosenAmount = null;
+                    customAmount.clear();
+                    message = null;
+                  }) : null,
+                ),
+              ]),
+              if (!usdAvailable) const Padding(
+                padding: EdgeInsets.only(top: 6),
+                child: Text('خيار الدولار يظهر بعد اعتماد سعر صرف حديث من إعدادات التبرع السريع في ووردبريس.',
+                  style: TextStyle(fontSize: 12, color: Colors.black54))),
+              const SizedBox(height: 22),
               const Text('المبلغ', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
@@ -172,6 +222,20 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
                 decoration: InputDecoration(
                   border: const OutlineInputBorder(),
                   labelText: 'أو أدخل مبلغًا آخر', suffixText: currency),
+              ),
+              if (isUsd && rate > 0) Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Text('سعر الصرف الذي اعتمدته الجمعية: 1 USD = ' +
+                    rate.toStringAsFixed(rate.truncateToDouble() == rate ? 0 : 2) +
+                    ' IQD', style: const TextStyle(color: _green)),
+                  if (estimatedIqd != null && estimatedIqd > 0)
+                    Text('المبلغ المطلوب دفعه: ' + estimatedIqd.toString() +
+                        ' دينار عراقي', style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 17)),
+                  const Text('الدولار للعرض واختيار المبلغ فقط؛ تحصيل WooCommerce بالدينار. قد يختلف سعر تحويل جهة إصدار البطاقة وتُضاف رسومها.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54)),
+                ]),
               ),
               const SizedBox(height: 22),
               const Text('طريقة الدفع', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -197,7 +261,7 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
                 label: Text(busy ? 'جارٍ التجهيز...' : 'متابعة التبرع والدفع الآمن'),
               ),
               const SizedBox(height: 12),
-              const Text('لا يخزن التطبيق بيانات البطاقة أو المحفظة. تأكيد التبرع يعتمد على بوابة الدفع.',
+              const Text('لا يخزن التطبيق بيانات البطاقة أو المحفظة. لا يُحصّل أي مبلغ قبل إتمام الدفع وتأكيده من بوابة الدفع.',
                 style: TextStyle(fontSize: 12), textAlign: TextAlign.center),
             ]),
           )),
