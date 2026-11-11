@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Altaawun Member Backup
  * Description: حفظ واستعادة تفضيلات أعضاء تطبيق جمعية التعاون الخيرية وسلة WooCommerce بعد تسجيل الدخول.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Altaawun Charity
  * Requires Plugins: woocommerce
  */
@@ -145,6 +145,10 @@ function altaawun_backup_cart_snapshot() {
             $variation_id = absint($item['variation_id'] ?? 0);
             $quantity = absint($item['quantity'] ?? 0);
             if (!$product_id || !$quantity) continue;
+            // Quick-donation carts depend on a signed one-time amount token.
+            // Do not restore them as ordinary products with a placeholder price.
+            if (function_exists('alta_qd_product_id') &&
+                $product_id === alta_qd_product_id()) continue;
             $items[] = array(
                 'product_id' => $product_id,
                 'variation_id' => $variation_id,
@@ -182,6 +186,8 @@ add_action('woocommerce_cart_loaded_from_session', static function ($cart) {
             $id = absint($item['product_id'] ?? 0);
             $quantity = absint($item['quantity'] ?? 0);
             if (!$id || !$quantity) continue;
+            if (function_exists('alta_qd_product_id') &&
+                $id === alta_qd_product_id()) continue;
             $cart->add_to_cart($id, min($quantity, 1000),
                 absint($item['variation_id'] ?? 0),
                 isset($item['variation']) && is_array($item['variation'])
