@@ -2294,14 +2294,6 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (_quickDonationEnabled) Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: FilledButton.icon(
-          onPressed: _openQuickDonation,
-          icon: const Icon(Icons.volunteer_activism_outlined),
-          label: const Text('تبرع الآن'),
-        ),
-      ),
       const Text('حالات التبرع والكفالة', style: TextStyle(
         fontSize: 21, fontWeight: FontWeight.bold, color: deepGreen)),
       const SizedBox(height: 12),
@@ -2592,6 +2584,18 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         _feature(Icons.school, 'المرافق والمدرسون'),
         _feature(Icons.photo_library, 'الصور والفيديوهات'),
       ] else if (page == 3) ...[
+        if (_quickDonationEnabled) Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: FilledButton.icon(
+            onPressed: _openQuickDonation,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF075C39),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            icon: const Icon(Icons.volunteer_activism_outlined),
+            label: const Text('تبرع الآن'),
+          ),
+        ),
         _donationCategories(),
       ] else if (page == 4) ...[
         _newsFeed(),
