@@ -25,6 +25,44 @@ jobs:
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
           flutter pub get
 
+      - name: Generate iOS app icon from charity emblem
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ios-icon-venv"
+          "$RUNNER_TEMP/ios-icon-venv/bin/python" -m pip install Pillow
+          "$RUNNER_TEMP/ios-icon-venv/bin/python" - <<'PY'
+          import json
+          from pathlib import Path
+
+          from PIL import Image
+
+          source = Path('assets/png_style_emblem_the_same_arabic_logo_arched_em.png')
+          emblem = Image.open(source).convert('RGBA')
+          mask = emblem.convert('RGB').convert('L').point(lambda pixel: 255 if pixel > 28 else 0)
+          bounds = mask.getbbox()
+          if bounds:
+              left, top, right, bottom = bounds
+              margin = max(2, int(max(right - left, bottom - top) * .06))
+              emblem = emblem.crop((
+                  max(0, left - margin), max(0, top - margin),
+                  min(emblem.width, right + margin), min(emblem.height, bottom + margin),
+              ))
+
+          catalog = Path('ios/Runner/Assets.xcassets/AppIcon.appiconset')
+          contents_path = catalog / 'Contents.json'
+          contents = json.loads(contents_path.read_text())
+          for entry in contents['images']:
+              width, height = (float(value) for value in entry['size'].split('x'))
+              scale = int(entry.get('scale', '1x').removesuffix('x'))
+              width, height = round(width * scale), round(height * scale)
+              filename = entry.setdefault('filename', f'CharityAppIcon-{width}x{height}.png')
+              icon = Image.new('RGBA', (width, height), (0, 0, 0, 255))
+              artwork = emblem.copy()
+              artwork.thumbnail((int(width * .94), int(height * .86)), Image.Resampling.LANCZOS)
+              icon.alpha_composite(artwork, ((width - artwork.width) // 2, (height - artwork.height) // 2))
+              icon.convert('RGB').save(catalog / filename)
+          contents_path.write_text(json.dumps(contents, indent=2) + '\n')
+          PY
+
       - name: Configure iOS privacy usage descriptions
         run: |
           set -euo pipefail
@@ -186,7 +224,9 @@ jobs:
           xcodebuild -list -project ios/Runner.xcodeproj
 
       - name: Build signed IPA
-        run: flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+        run: |
+          build_number=$((218 + GITHUB_RUN_NUMBER))
+          flutter build ipa --release --build-number="$build_number" --export-options-plist=ios/ExportOptions.plist
 
       - name: Save IPA artifact
         uses: actions/upload-artifact@v4
