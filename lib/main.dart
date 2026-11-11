@@ -832,7 +832,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                 final prefs = await SharedPreferences.getInstance();
                 await prefs.setString('app_font', font);
                 await prefs.setString('app_font_size', size);
-                unawaited(MemberBackupService.saveChanges());
+                unawaited(MemberBackupService.saveChanges().then((_) {}));
                 selectedAppFont.value = font;
                 selectedAppFontSize.value = size;
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
@@ -897,7 +897,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
               final prefs = await SharedPreferences.getInstance();
               await prefs.setString('notification_tone', selected);
               await prefs.setBool('notification_vibration', vibration);
-              unawaited(MemberBackupService.saveChanges());
+              unawaited(MemberBackupService.saveChanges().then((_) {}));
               if (!mounted) return;
               setState(() { _notificationTone = selected; _notificationVibration = vibration; });
               try { await _syncNotificationToneTopic(); } catch (e) { debugPrint('Tone topic sync: $e'); }
@@ -1407,7 +1407,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   void initState() {
     super.initState();
     _loadAppSlides();
-    unawaited(_loadCategorySettings().then((_) => _syncMemberPreferences()));
+    unawaited(_loadCategorySettings().then((_) async { await _syncMemberPreferences(); }));
     _restoreRemoteTiles();
     _loadNotificationPreferences();
     _setupPush();
@@ -1537,7 +1537,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         hiddenCategories.map((id) => '$id').toList());
     await prefs.setStringList('home_custom_categories',
         customCategories.entries.map((e) => '${e.key}|${e.value}').toList());
-    unawaited(MemberBackupService.saveChanges());
+    unawaited(MemberBackupService.saveChanges().then((_) {}));
   }
 
   void _addCategoryInline(String value, StateSetter refreshSheet) {
@@ -2464,7 +2464,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     onOpenCart: _openCart,
     onSignedIn: () {
       if (!mounted) return;
-      unawaited(_syncMemberPreferences());
+      unawaited(_syncMemberPreferences().then((_) {}));
       final pending = _pendingSponsorshipUrl;
       setState(() {
         _pendingSponsorshipUrl = null;
