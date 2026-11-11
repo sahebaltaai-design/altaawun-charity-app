@@ -35,9 +35,17 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
     super.dispose();
   }
 
+  // Always fetch fresh donation settings. A price change in WordPress must
+  // not be hidden by a CDN/browser proxy cache.
   Future<Map<String, dynamic>> load() async {
-    final response = await http.get(Uri.parse(_base))
-        .timeout(const Duration(seconds: 15));
+    final url = Uri.parse(_base).replace(queryParameters: {
+      '_qd_refresh': DateTime.now().millisecondsSinceEpoch.toString(),
+    });
+    final response = await http.get(url, headers: {
+      'Accept': 'application/json',
+      'Cache-Control': 'no-cache, no-store, max-age=0',
+      'Pragma': 'no-cache',
+    }).timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) throw StateError('No quick donation endpoint');
     final value = jsonDecode(utf8.decode(response.bodyBytes));
     if (value is! Map || value['enabled'] != true) {
@@ -208,10 +216,24 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
                   }) : null,
                 ),
               ]),
-              if (!usdAvailable) const Padding(
-                padding: EdgeInsets.only(top: 6),
-                child: Text('خيار الدولار يظهر بعد اعتماد سعر صرف حديث من إعدادات التبرع السريع في ووردبريس.',
-                  style: TextStyle(fontSize: 12, color: Colors.black54))),
+              if (!usdAvailable) Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  options['store_currency'] != 'IQD'
+                      ? 'عملة WooCommerce ليست الدينار العراقي. راجع إعدادات العملة في المتجر.'
+                      : 'لم تصل إلى التطبيق بيانات سعر صرف الدولار المعتمد. اضغط تحديث السعر.',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54))),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton.icon(
+                  onPressed: () => setState(() {
+                    config = load();
+                    message = null;
+                  }),
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('تحديث سعر الصرف'),
+                ),
+              ),
               const SizedBox(height: 22),
               Row(children: [
                 const Text('المبلغ', style: TextStyle(fontWeight: FontWeight.bold)),
