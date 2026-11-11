@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Altaawun Quick Donation
  * Description: تفعيل أو تعطيل زر تبرع الآن في تطبيق الجمعية، مع التصنيفات والمبالغ والدفع عبر WooCommerce.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: Altaawun Charity
  * Requires Plugins: woocommerce
  */
@@ -163,7 +163,10 @@ function alta_qd_usd_quote() {
     $stamp = $automatic_valid ? $auto_time : ($manual_valid ? $manual_time : 0);
     $source = $automatic_valid ? 'cbi_auto' : ($manual_valid ? 'manual_fallback' : 'unavailable');
     return array(
-        'enabled' => $current && $rate > 0,
+        // A valid quote can be previewed independently of the currency
+        // currently configured for WooCommerce. Actual checkout still
+        // requires IQD through alta_qd_checkout_ready().
+        'enabled' => $rate > 0,
         'rate' => $rate,
         'updated_at' => $stamp,
         'source' => $source,
@@ -357,7 +360,14 @@ function alta_qd_admin_page() {
         echo ' — ' . esc_html((string)$quote['rate']) . ' IQD/USD';
         echo ' — آخر تحقق: ' . esc_html(wp_date('Y-m-d H:i', $quote['updated_at']));
     }
-    echo '</p></td></tr>';
+    echo '</p>';
+    if (!$quote['store_currency_iqd']) {
+        $store_currency = function_exists('get_woocommerce_currency')
+            ? get_woocommerce_currency() : 'غير محددة';
+        echo '<div class="notice notice-warning inline"><p>عملة متجر WooCommerce الحالية: <strong>'
+            . esc_html($store_currency) . '</strong>. يسمح النظام بعرض سعر الدولار ومقابله بالدينار، لكن إتمام التبرع السريع بالدينار العراقي سيظل غير متاح حتى تصبح عملة الدفع IQD. لا تغيّر عملة المتجر قبل مراجعة أثر ذلك على أسعار الكفالات والمنتجات وبوابات الدفع.</p></div>';
+    }
+    echo '</td></tr>';
     echo '<tr><th>طرق الدفع المتاحة</th><td><p class="description">يظهر الخيار داخل التطبيق فقط إذا ربطته ببوابة WooCommerce مثبتة ومفعّلة. يمكن ربط Visa وMastercard بنفس بوابة QiCard إن أكد مزود الدفع دعمهما. لا تضع بيانات دخول حساسة هنا.</p>';
     $choices = array(
       'gateway_visa'=>'Visa', 'gateway_mastercard'=>'Mastercard',
