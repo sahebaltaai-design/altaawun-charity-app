@@ -315,7 +315,7 @@ add_filter('woocommerce_add_to_cart_validation', static function ($passed, $prod
 
 add_action('woocommerce_before_calculate_totals', static function ($cart) {
     if (!$cart) return;
-    foreach ($cart->get_cart() as $item) {
+    foreach ($cart->get_cart() as $cart_item_key => $item) {
         if ((int)($item['product_id'] ?? 0) !== alta_qd_product_id()) continue;
         $qd = $item['altaawun_qd'] ?? null;
         list($min,$max) = alta_qd_limits();
@@ -323,7 +323,7 @@ add_action('woocommerce_before_calculate_totals', static function ($cart) {
         if ($amount < $min || $amount > $max || !isset(alta_qd_categories()[$qd['category'] ?? ''])) {
             // Fail closed: an invalid donation must never be checked out at
             // an unintended placeholder amount.
-            $cart->remove_cart_item($item['key'] ?? '');
+            $cart->remove_cart_item($cart_item_key);
             continue;
         }
         $item['data']->set_price($amount);
@@ -342,3 +342,19 @@ add_action('woocommerce_checkout_create_order_line_item', static function ($item
     $item->add_meta_data('وجهة التبرع', sanitize_text_field($qd['label'] ?? ''), true);
     if (!empty($qd['notes'])) $item->add_meta_data('ملاحظة المتبرع', sanitize_textarea_field($qd['notes']), true);
 }, 10, 3);
+
+// Saved carts created before this plugin was installed must never contain a
+// donation product without its signed amount metadata.
+add_action('woocommerce_cart_loaded_from_session', static function ($cart) {
+    if (!$cart) return;
+    foreach ($cart->get_cart() as $cart_item_key => $item) {
+        if ((int)($item['product_id'] ?? 0) !== alta_qd_product_id()) continue;
+        $qd = $item['altaawun_qd'] ?? null;
+        list($min, $max) = alta_qd_limits();
+        $value = is_array($qd) ? absint($qd['amount'] ?? 0) : 0;
+        if ($value < $min || $value > $max ||
+            !isset(alta_qd_categories()[$qd['category'] ?? ''])) {
+            $cart->remove_cart_item($cart_item_key);
+        }
+    }
+}, 100);
