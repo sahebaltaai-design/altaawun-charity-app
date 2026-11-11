@@ -146,8 +146,12 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
         final payment = methods.any((m) => m['id'] == methodId)
             ? methodId : null;
         final currency = isUsd ? 'USD' : 'IQD';
-        return ListView(padding: const EdgeInsets.all(16), children: [
-          Card(elevation: 0, color: Colors.white, child: Padding(
+        return ListView(padding: const EdgeInsets.all(12), children: [
+          // Center the form on tablets in portrait and landscape, instead
+          // of stretching every input to the entire screen width.
+          Center(child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 780),
+            child: Card(elevation: 0, color: Colors.white, child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               const Icon(Icons.volunteer_activism, color: _green, size: 44),
@@ -200,19 +204,58 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
                 child: Text('خيار الدولار يظهر بعد اعتماد سعر صرف حديث من إعدادات التبرع السريع في ووردبريس.',
                   style: TextStyle(fontSize: 12, color: Colors.black54))),
               const SizedBox(height: 22),
-              const Text('المبلغ', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final amount in amounts)
-                  ChoiceChip(
-                    label: Text(amount.toString() + ' ' + currency),
-                    selected: chosenAmount == amount && customAmount.text.isEmpty,
-                    onSelected: (_) => setState(() {
-                      chosenAmount = amount;
-                      customAmount.clear();
-                    }),
-                  ),
+              Row(children: [
+                const Text('المبلغ', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Spacer(),
+                Text(currency == 'USD' ? 'دولار أمريكي' : 'دينار عراقي',
+                  style: const TextStyle(fontSize: 12, color: Colors.black54)),
               ]),
+              const SizedBox(height: 8),
+              // Compact, identical amount tiles. On phones the default five
+              // amounts fit in a single row; very narrow screens wrap, and
+              // tablets use the available width without oversized chips.
+              LayoutBuilder(builder: (context, constraints) {
+                final available = constraints.maxWidth;
+                final columns = available < 270 ? 3 :
+                    available >= 720 ? 6 : 5;
+                final count = amounts.length < columns ? amounts.length : columns;
+                if (count == 0) return const SizedBox.shrink();
+                const spacing = 6.0;
+                final tileWidth = (available - spacing * (count - 1)) / count;
+                return Wrap(spacing: spacing, runSpacing: spacing, children: [
+                  for (final amount in amounts)
+                    SizedBox(
+                      width: tileWidth,
+                      height: 44,
+                      child: Material(
+                        color: chosenAmount == amount && customAmount.text.isEmpty
+                            ? _green : const Color(0xFFE3F2E9),
+                        borderRadius: BorderRadius.circular(9),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(9),
+                          onTap: () => setState(() {
+                            chosenAmount = amount;
+                            customAmount.clear();
+                            message = null;
+                          }),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Center(child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(amount.toString(),
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize: 14, fontWeight: FontWeight.bold,
+                                  color: chosenAmount == amount &&
+                                      customAmount.text.isEmpty
+                                      ? Colors.white : _green)),
+                            )),
+                          ),
+                        ),
+                      ),
+                    ),
+                ]);
+              }),
               const SizedBox(height: 12),
               TextField(
                 controller: customAmount,
@@ -264,7 +307,7 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
               const Text('لا يخزن التطبيق بيانات البطاقة أو المحفظة. لا يُحصّل أي مبلغ قبل إتمام الدفع وتأكيده من بوابة الدفع.',
                 style: TextStyle(fontSize: 12), textAlign: TextAlign.center),
             ]),
-          )),
+          ))),
         ]);
       },
     ),
