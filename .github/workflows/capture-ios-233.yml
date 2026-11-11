@@ -29,7 +29,15 @@ jobs:
           source = path.read_text()
           original = 'home: const SplashScreen(),'
           assert source.count(original) == 1
-          path.write_text(source.replace(original, 'home: const CharityShell(),'))
+          source = source.replace(original, 'home: const CharityShell(),')
+          start = source.index('class _CharityShellState')
+          init = source.index('    super.initState();', start) + len('    super.initState();')
+          navigation = """
+              Timer(const Duration(seconds: 45), () { if (mounted) go(3); });
+              Timer(const Duration(seconds: 90), () { if (mounted) go(4); });
+              Timer(const Duration(seconds: 135), () { if (mounted) go(7); });
+          """
+          path.write_text(source[:init] + navigation + source[init:])
           PY
           flutter build ios --simulator --debug --no-codesign
       - name: Capture the running app
@@ -42,8 +50,11 @@ jobs:
           xcrun simctl launch "$SIMULATOR_ID" "$bundle_id"
           sleep 30
           mkdir -p screenshots
-          xcrun simctl io "$SIMULATOR_ID" screenshot screenshots/01-Altaawun-iPhone-Home.png
-          sips -g pixelWidth -g pixelHeight screenshots/01-Altaawun-iPhone-Home.png
+          for name in 01-Home 02-Sponsorship-and-Donations 03-News 04-Account; do
+            xcrun simctl io "$SIMULATOR_ID" screenshot "screenshots/$name.png"
+            sips -g pixelWidth -g pixelHeight "screenshots/$name.png"
+            if [ "$name" != 04-Account ]; then sleep 45; fi
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: altaawun-iphone-screenshots
