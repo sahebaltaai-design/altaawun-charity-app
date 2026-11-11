@@ -307,7 +307,7 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
               const Text('لا يخزن التطبيق بيانات البطاقة أو المحفظة. لا يُحصّل أي مبلغ قبل إتمام الدفع وتأكيده من بوابة الدفع.',
                 style: TextStyle(fontSize: 12), textAlign: TextAlign.center),
             ]),
-          ))),
+          )))),
         ]);
       },
     ),
