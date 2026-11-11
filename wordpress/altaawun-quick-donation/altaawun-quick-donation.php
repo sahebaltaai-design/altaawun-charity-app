@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Altaawun Quick Donation
  * Description: تفعيل أو تعطيل زر تبرع الآن في تطبيق الجمعية، مع التصنيفات والمبالغ والدفع عبر WooCommerce.
- * Version: 1.1.1
+ * Version: 1.2.0
  * Author: Altaawun Charity
  * Requires Plugins: woocommerce
  */
@@ -17,6 +17,10 @@ function alta_qd_defaults() {
         'enabled' => 0,
         'categories' => "general|التبرعات العامة\norphans|كفالة الأيتام\neducation|المدرسة والتعليم\nfood|السلة الغذائية",
         'amounts' => '',
+        // Optional display-only conversion. WooCommerce itself stays in IQD.
+        // No rate is guessed: an admin must publish and periodically refresh it.
+        'usd_to_iqd_rate' => '',
+        'usd_rate_updated_at' => 0,
         // Use WooCommerce's actual gateway IDs. Nothing is shown to a donor
         // until a gateway is installed, enabled and mapped by the administrator.
         'gateway_visa' => '',
@@ -40,9 +44,30 @@ function alta_qd_categories() {
     return $items;
 }
 function alta_qd_limits() {
-    $currency = function_exists('get_woocommerce_currency') ? get_woocommerce_currency() : 'USD';
-    return in_array($currency, array('IQD', 'IRR', 'LBP', 'SYP'), true)
-        ? array(1000, 10000000) : array(1, 10000);
+    // All quick donations are denominated and charged in Iraqi dinars.
+    // Do NOT silently change the global WooCommerce store currency.
+    return array(1000, 10000000);
+}
+
+/**
+ * This is an admin-controlled indicative donation conversion, not a live
+ * bank or card-issuer FX rate. Stop new USD quotes when it is too old.
+ */
+function alta_qd_usd_quote() {
+    $config = alta_qd_options();
+    $rate = (float)($config['usd_to_iqd_rate'] ?? 0);
+    $updated = absint($config['usd_rate_updated_at'] ?? 0);
+    $current = function_exists('get_woocommerce_currency')
+        && get_woocommerce_currency() === 'IQD';
+    $fresh = $updated > 0 && $updated <= time()
+        && (time() - $updated) <= 3 * DAY_IN_SECONDS;
+    $valid = is_finite($rate) && $rate >= 100 && $rate <= 10000;
+    return array(
+        'enabled' => $current && $valid && $fresh,
+        'rate' => $valid ? $rate : 0,
+        'updated_at' => $updated,
+        'store_currency_iqd' => $current,
+    );
 }
 function alta_qd_amounts() {
     list($min, $max) = alta_qd_limits();
@@ -92,6 +117,8 @@ function alta_qd_enabled() {
 function alta_qd_checkout_ready() {
     return alta_qd_enabled()
         && class_exists('WooCommerce')
+        && function_exists('get_woocommerce_currency')
+        && get_woocommerce_currency() === 'IQD'
         && alta_qd_product_id() > 0
         && count(alta_qd_categories()) > 0
         && count(alta_qd_payment_methods()) > 0;
@@ -119,6 +146,20 @@ function alta_qd_clean_settings($raw) {
         'gateway_zaincash' => sanitize_key($raw['gateway_zaincash'] ?? ''),
         'gateway_qicard' => sanitize_key($raw['gateway_qicard'] ?? ''),
     );
+    $input_rate = trim(sanitize_text_field(wp_unslash((string)($raw['usd_to_iqd_rate'] ?? ''))));
+    $previous = alta_qd_options();
+    if ($input_rate !== '' && preg_match('/^\\d{3,5}(?:\\.\\d{1,2})?$/', $input_rate)) {
+        $numeric_rate = (float)$input_rate;
+        if ($numeric_rate >= 100 && $numeric_rate <= 10000) {
+            $clean['usd_to_iqd_rate'] = $input_rate;
+            // Saving this field is the administrator's explicit rate review.
+            $clean['usd_rate_updated_at'] = time();
+        }
+    }
+    if (!isset($clean['usd_to_iqd_rate'])) {
+        $clean['usd_to_iqd_rate'] = '';
+        $clean['usd_rate_updated_at'] = 0;
+    }
     if ($clean['enabled']) alta_qd_create_product();
     return $clean;
 }
@@ -181,6 +222,17 @@ function alta_qd_admin_page() {
         . '[amounts]" value="' . esc_attr($config['amounts']) . '" placeholder="5000,10000,25000,50000">'
         . '<p class="description">افصل المبالغ بفاصلة؛ اتركها فارغة لاستخدام القيم الافتراضية حسب عملة WooCommerce.</p></td></tr>';
     $gateways = alta_qd_active_gateways();
+    $quote = alta_qd_usd_quote();
+    echo '<tr><th>الدولار الأمريكي</th><td><label>1 دولار أمريكي = <input type="number" step="0.01" min="100" max="10000" name="'
+        . esc_attr(ALTA_QD_OPTION) . '[usd_to_iqd_rate]" value="'
+        . esc_attr($config['usd_to_iqd_rate'] ?? '') . '" placeholder="يُدخل السعر المعتمد من الجمعية"> دينار عراقي</label>';
+    echo '<p class="description">سعر الصرف يُحدد من الجمعية ولا يُحدَّث تلقائيًا. لا تضع سعرًا تقديريًا من دون اعتماده. تنتهي صلاحية عرض الدولار بعد 3 أيام حتى يراجع المسؤول السعر.</p>';
+    if (!empty($quote['updated_at'])) {
+        echo '<p>آخر اعتماد للسعر: ' . esc_html(wp_date('Y-m-d H:i', $quote['updated_at'])) . '</p>';
+    }
+    echo '<p>' . ($quote['enabled']
+        ? 'عرض الدولار متاح؛ الدفع سيُطلب بالدينار العراقي.'
+        : 'عرض الدولار غير جاهز؛ تأكد من ضبط عملة WooCommerce على IQD وإدخال سعر صرف حديث.') . '</p></td></tr>';
     echo '<tr><th>طرق الدفع المتاحة</th><td><p class="description">يظهر الخيار داخل التطبيق فقط إذا ربطته ببوابة WooCommerce مثبتة ومفعّلة. يمكن ربط Visa وMastercard بنفس بوابة QiCard إن أكد مزود الدفع دعمهما. لا تضع بيانات دخول حساسة هنا.</p>';
     $choices = array(
       'gateway_visa'=>'Visa', 'gateway_mastercard'=>'Mastercard',
@@ -224,8 +276,17 @@ add_action('rest_api_init', static function () {
                 'categories' => $categories,
                 'amounts' => $enabled ? alta_qd_amounts() : array(),
                 'min_amount' => $minimum, 'max_amount' => $maximum,
-                'currency' => function_exists('get_woocommerce_currency')
-                    ? get_woocommerce_currency() : 'USD',
+                'currency' => 'IQD',
+                'store_currency' => function_exists('get_woocommerce_currency')
+                    ? get_woocommerce_currency() : '',
+                'usd_available' => alta_qd_usd_quote()['enabled'],
+                'usd_to_iqd_rate' => alta_qd_usd_quote()['enabled']
+                    ? alta_qd_usd_quote()['rate'] : null,
+                'usd_rate_updated_at' => alta_qd_usd_quote()['updated_at'],
+                'usd_amounts' => array(5, 10, 25, 50, 100),
+                'usd_min_amount' => 1,
+                'usd_max_amount' => alta_qd_usd_quote()['enabled']
+                    ? (int)floor($maximum / alta_qd_usd_quote()['rate']) : 0,
                 'payment_methods' => $enabled ? array_values(alta_qd_payment_methods()) : array(),
             ));
             $response->header('Cache-Control', 'no-store, private, max-age=0');
@@ -246,9 +307,26 @@ add_action('rest_api_init', static function () {
             if (!is_scalar($amount_raw) || !ctype_digit((string)$amount_raw)) {
                 return new WP_Error('invalid_amount', 'أدخل مبلغًا صحيحًا.', array('status' => 400));
             }
-            $amount = (int)$amount_raw;
+            $original_amount = (int)$amount_raw;
+            $original_currency = strtoupper(sanitize_text_field(
+                (string)($request->get_param('currency') ?: 'IQD')));
+            if (!in_array($original_currency, array('IQD', 'USD'), true)) {
+                return new WP_Error('invalid_currency', 'عملة التبرع غير معتمدة.', array('status' => 400));
+            }
+            $usd_quote = alta_qd_usd_quote();
+            if ($original_currency === 'USD' && !$usd_quote['enabled']) {
+                return new WP_Error('rate_unavailable', 'سعر الدولار غير متاح أو انتهت صلاحيته. يرجى اختيار الدينار.', array('status' => 503));
+            }
+            $amount = $original_currency === 'USD'
+                ? (int)round($original_amount * $usd_quote['rate']) : $original_amount;
             if ($amount < $min || $amount > $max || !isset($categories[$category])) {
                 return new WP_Error('invalid_donation', 'التصنيف أو المبلغ غير صالح.', array('status' => 400));
+            }
+            $expected = $request->get_param('expected_amount_iqd');
+            if ($original_currency === 'USD' &&
+                (!is_scalar($expected) || !ctype_digit((string)$expected) ||
+                (int)$expected !== $amount)) {
+                return new WP_Error('rate_changed', 'تغير سعر الصرف؛ راجع المبلغ المحوّل وأعد المحاولة.', array('status' => 409));
             }
             $method_id = sanitize_key((string)$request->get_param('payment_method'));
             $methods = alta_qd_payment_methods();
@@ -260,6 +338,10 @@ add_action('rest_api_init', static function () {
             set_transient('alta_qd_' . $nonce, array(
                 'amount' => $amount, 'category' => $category,
                 'label' => $categories[$category],
+                'original_currency' => $original_currency,
+                'original_amount' => $original_amount,
+                'usd_to_iqd_rate' => $original_currency === 'USD'
+                    ? $usd_quote['rate'] : null,
                 'notes' => substr($notes, 0, 500),
                 'payment_method' => $method_id,
                 'gateway' => $methods[$method_id]['gateway'],
@@ -297,6 +379,9 @@ add_action('template_redirect', static function () {
         $added = WC()->cart->add_to_cart(alta_qd_product_id(), 1, 0, array(), array(
             'altaawun_qd' => array(
                 'amount' => $payload['amount'],
+                'original_currency' => $payload['original_currency'] ?? 'IQD',
+                'original_amount' => $payload['original_amount'] ?? $payload['amount'],
+                'usd_to_iqd_rate' => $payload['usd_to_iqd_rate'] ?? null,
                 'category' => $payload['category'],
                 'label' => $payload['label'],
                 'notes' => $payload['notes'],
@@ -348,6 +433,13 @@ add_filter('woocommerce_get_item_data', static function ($data, $cart_item) {
     $qd = $cart_item['altaawun_qd'] ?? null;
     if (is_array($qd)) {
         $data[] = array('key' => 'وجهة التبرع', 'value' => sanitize_text_field($qd['label'] ?? ''));
+        if (($qd['original_currency'] ?? 'IQD') === 'USD') {
+            $data[] = array('key' => 'المبلغ المختار بالدولار',
+                'value' => absint($qd['original_amount'] ?? 0) . ' USD');
+            $data[] = array('key' => 'سعر التحويل المعتمد',
+                'value' => sanitize_text_field((string)($qd['usd_to_iqd_rate'] ?? ''))
+                    . ' IQD / USD');
+        }
     }
     return $data;
 }, 10, 2);
@@ -355,6 +447,14 @@ add_action('woocommerce_checkout_create_order_line_item', static function ($item
     $qd = $values['altaawun_qd'] ?? null;
     if (!is_array($qd)) return;
     $item->add_meta_data('وجهة التبرع', sanitize_text_field($qd['label'] ?? ''), true);
+    $item->add_meta_data('عملة المبلغ المختار',
+        sanitize_text_field($qd['original_currency'] ?? 'IQD'), true);
+    $item->add_meta_data('المبلغ المختار',
+        absint($qd['original_amount'] ?? $qd['amount'] ?? 0), true);
+    if (($qd['original_currency'] ?? '') === 'USD') {
+        $item->add_meta_data('سعر الدولار بالدينار عند التبرع',
+            sanitize_text_field((string)($qd['usd_to_iqd_rate'] ?? '')), true);
+    }
     if (!empty($qd['notes'])) $item->add_meta_data('ملاحظة المتبرع', sanitize_textarea_field($qd['notes']), true);
 }, 10, 3);
 
