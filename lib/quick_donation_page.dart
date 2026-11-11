@@ -317,6 +317,10 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
               ),
               const SizedBox(height: 22),
               const Text('طريقة الدفع', style: TextStyle(fontWeight: FontWeight.bold)),
+              if (options['checkout_ready'] != true) const Padding(
+                padding: EdgeInsets.only(top: 8, bottom: 8),
+                child: Text('يمكن اختيار المبلغ ومعاينة تحويل الدولار إلى الدينار، لكن الدفع غير متاح حتى تهيئة عملة الدفع IQD وربط بوابة دفع إلكترونية.',
+                  style: TextStyle(fontSize: 12, color: Colors.black54))),
               if (methods.isEmpty) const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Text('لم تُفعّل بوابات الدفع بعد. تظهر طرق الدفع هنا بعد تفعيلها من لوحة ووردبريس.')),
@@ -333,7 +337,7 @@ class _QuickDonationPageState extends State<QuickDonationPage> {
               FilledButton.icon(
                 style: FilledButton.styleFrom(backgroundColor: _green,
                   padding: const EdgeInsets.symmetric(vertical: 15)),
-                onPressed: busy || payment == null
+                onPressed: busy || payment == null || options['checkout_ready'] != true
                     ? null : () => prepare(options, category, payment),
                 icon: const Icon(Icons.lock_outline),
                 label: Text(busy ? 'جارٍ التجهيز...' : 'متابعة التبرع والدفع الآمن'),
