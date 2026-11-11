@@ -87,7 +87,8 @@ function alta_qd_enabled() {
     return class_exists('WooCommerce')
         && !empty(alta_qd_options()['enabled'])
         && alta_qd_product_id() > 0
-        && count(alta_qd_categories()) > 0;
+        && count(alta_qd_categories()) > 0
+        && count(alta_qd_payment_methods()) > 0;
 }
 function alta_qd_clean_settings($raw) {
     $raw = is_array($raw) ? $raw : array();
@@ -121,7 +122,9 @@ function alta_qd_active_gateways() {
     if (!function_exists('WC') || !WC() || !WC()->payment_gateways()) return array();
     $list = array();
     foreach (WC()->payment_gateways()->payment_gateways() as $gateway) {
-        if (!is_object($gateway) || empty($gateway->id) || $gateway->enabled !== 'yes') continue;
+        if (!is_object($gateway) || empty($gateway->id) ||
+            $gateway->enabled !== 'yes' ||
+            in_array(sanitize_key($gateway->id), array('cod', 'bacs', 'cheque'), true)) continue;
         $list[sanitize_key($gateway->id)] = wp_strip_all_tags($gateway->get_title());
     }
     return $list;
@@ -158,7 +161,7 @@ function alta_qd_admin_page() {
     if (!current_user_can('manage_options')) return;
     $config = alta_qd_options();
     echo '<div class="wrap"><h1>التبرع السريع — تطبيق الجمعية</h1>';
-    echo '<p>تفعيل زر «تبرع الآن» أو إخفاؤه دون تحديث التطبيق. تُستخدم بوابة الدفع المضبوطة في WooCommerce فقط.</p>';
+    echo '<p>تفعيل زر «تبرع الآن» أو إخفاؤه دون تحديث التطبيق. لن يظهر الزر للمستخدم حتى تُفعّل بوابة دفع إلكتروني واحدة على الأقل وتُحدد هنا.</p>';
     if (!class_exists('WooCommerce')) echo '<div class="notice notice-error"><p>يجب تفعيل WooCommerce أولًا.</p></div>';
     echo '<form method="post" action="options.php">';
     settings_fields('alta_qd_group');
