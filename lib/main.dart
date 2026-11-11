@@ -323,6 +323,7 @@ class _CheckoutContent extends StatefulWidget {
 class _CheckoutContentState extends State<_CheckoutContent> {
   late final WebViewController controller;
   bool _errorReported = false;
+  bool _paymentFlowAuthorized = false;
   String? _afterBridgeDestination;
   static const _authStorage = FlutterSecureStorage();
   Future<void> _loadCheckoutWithAccount(String destination) async {
@@ -387,11 +388,24 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           final host = uri.host.toLowerCase();
           final sameSite = host == 'aytamaliraq.com' || host == 'www.aytamaliraq.com';
           if (!sameSite) {
-            // External payment providers may be needed after the user begins checkout.
+            // Hosted Visa/Mastercard/QiCard/ZainCash payments may redirect
+            // across an acquirer and a card issuer for OTP/3DS. Authorize
+            // that redirect chain only after leaving our checkout page.
+            if (_paymentFlowAuthorized) return NavigationDecision.navigate;
             final current = await controller.currentUrl();
+            final initialHost = Uri.tryParse(current ?? '')?.host.toLowerCase() ?? '';
             final currentPath = Uri.tryParse(current ?? '')?.path.toLowerCase() ?? '';
-            return currentPath.contains('/checkout') || currentPath.contains('/order-pay')
-                ? NavigationDecision.navigate : NavigationDecision.prevent;
+            if ((initialHost == 'aytamaliraq.com' ||
+                 initialHost == 'www.aytamaliraq.com') &&
+                (currentPath.contains('/checkout') ||
+                 currentPath.contains('/order-pay'))) {
+              _paymentFlowAuthorized = true;
+              return NavigationDecision.navigate;
+            }
+            return NavigationDecision.prevent;
+          }
+          if (uri.path.contains('/order-received')) {
+            _paymentFlowAuthorized = false;
           }
           final path = uri.path.toLowerCase();
           if (widget.allowSiteNavigation) return NavigationDecision.navigate;
