@@ -23,6 +23,14 @@ jobs:
         run: |
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
           flutter pub get
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('lib/main.dart')
+          source = path.read_text()
+          original = 'home: const SplashScreen(),'
+          assert source.count(original) == 1
+          path.write_text(source.replace(original, 'home: const CharityShell(),'))
+          PY
           flutter build ios --simulator --debug --no-codesign
       - name: Capture the running app
         run: |
@@ -34,8 +42,8 @@ jobs:
           xcrun simctl launch "$SIMULATOR_ID" "$bundle_id"
           sleep 30
           mkdir -p screenshots
-          xcrun simctl io "$SIMULATOR_ID" screenshot screenshots/01-Altaawun-iPhone.png
-          sips -g pixelWidth -g pixelHeight screenshots/01-Altaawun-iPhone.png
+          xcrun simctl io "$SIMULATOR_ID" screenshot screenshots/01-Altaawun-iPhone-Home.png
+          sips -g pixelWidth -g pixelHeight screenshots/01-Altaawun-iPhone-Home.png
       - uses: actions/upload-artifact@v4
         with:
           name: altaawun-iphone-screenshots
