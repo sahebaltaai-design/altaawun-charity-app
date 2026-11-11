@@ -348,7 +348,8 @@ class _CheckoutContentState extends State<_CheckoutContent> {
             // AFTER the bridge sets its WordPress/WooCommerce session cookie.
             final requested = Uri.parse(destination);
             if (requested.queryParameters.containsKey('add-to-cart') ||
-                requested.path.toLowerCase().contains('/checkout')) {
+                requested.path.toLowerCase().contains('/checkout') ||
+                requested.path.toLowerCase().contains('/cart')) {
               _afterBridgeDestination = destination;
             }
             await controller.loadRequest(bridgeUrl);
@@ -432,7 +433,10 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           }
         },
       ))
-      ..loadRequest(Uri.parse(widget.url));
+      ;
+    // Authenticate WooCommerce with the existing member session on the
+    // first cart load as well, not only when switching cart URLs later.
+    _loadCheckoutWithAccount(widget.url);
   }
   // Remove unrelated site chrome only while the embedded cart/checkout is open.
   // Keep WooCommerce forms, payment gateways, and order details untouched.
@@ -1856,6 +1860,19 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                       ),
                     )),
                     IconButton(
+                      tooltip: 'سلة التسوق والكفالات',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36, minHeight: 42),
+                      onPressed: _openCart,
+                      icon: Badge(
+                        isLabelVisible: _cartCount != null && _cartCount! > 0,
+                        label: Text((_cartCount ?? 0).toString()),
+                        child: const Icon(Icons.shopping_cart_outlined,
+                          color: Color(0xFF075C39)),
+                      ),
+                    ),
+                    IconButton(
                       tooltip: 'الإشعارات',
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(
@@ -1917,7 +1934,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           maxLines: 1, style: TextStyle(fontSize: 12))),
       ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       actions: [IconButton(
-        tooltip: 'سلة الكفالات والتبرعات',
+        tooltip: 'سلة التسوق والكفالات',
         onPressed: _openCart,
         icon: Badge(
           isLabelVisible: _cartCount != null && _cartCount! > 0,
@@ -1956,7 +1973,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         onTap: () { Navigator.pop(context); go(0); },
       ),
       ListTile(leading: const Icon(Icons.shopping_cart_outlined, color: green),
-        title: const Text('سلة الكفالات والتبرعات'),
+        title: const Text('سلة التسوق والكفالات'),
         onTap: () { Navigator.pop(context); _openCart(); }),
       ListTile(
         leading: const Icon(Icons.settings_outlined, color: green),
