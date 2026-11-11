@@ -20,8 +20,8 @@ jobs:
         run: |
           mkdir -p dist
           cd wordpress
-          zip -r ../dist/altaawun-quick-donation-v1.1.1.zip altaawun-quick-donation
+          zip -r ../dist/altaawun-quick-donation-v1.2.0.zip altaawun-quick-donation
       - uses: actions/upload-artifact@v4
         with:
-          name: altaawun-quick-donation-wordpress-v1.1.1
-          path: dist/altaawun-quick-donation-v1.1.1.zip
+          name: altaawun-quick-donation-wordpress-v1.2.0
+          path: dist/altaawun-quick-donation-v1.2.0.zip
