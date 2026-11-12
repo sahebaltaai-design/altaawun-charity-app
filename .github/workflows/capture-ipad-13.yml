@@ -1,0 +1,99 @@
+name: Capture 13-inch iPad App Store Screenshots
+on:
+  push:
+    branches: [screenshots/ios-233]
+    paths: [.github/workflows/capture-ipad-13.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: macos-26-intel
+    timeout-minutes: 60
+    steps:
+      - name: Checkout existing iOS app source
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Boot a 13-inch iPad Pro simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available
+          device="$(xcrun simctl list devices available -j | python3 -c 'import sys,json; devices=[d for ds in json.load(sys.stdin)["devices"].values() for d in ds if "iPad Pro" in d["name"] and "13-inch" in d["name"] and d.get("isAvailable",True)]; assert devices,"No 13-inch iPad Pro simulator available"; print(devices[-1]["udid"])')"
+          echo "SIMULATOR_ID=$device" >> "$GITHUB_ENV"
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl ui "$device" appearance light
+
+      - name: Build actual app for iPad simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
+          flutter pub get
+          # Navigate from the splash to real, existing app pages for automated captures.
+          # This change is applied to the runner's temporary checkout only.
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('lib/main.dart')
+          source = path.read_text()
+          original = 'home: const SplashScreen(),'
+          assert source.count(original) == 1, 'Unexpected splash route; cannot safely capture'
+          source = source.replace(original, 'home: const CharityShell(),')
+          start = source.index('class _CharityShellState')
+          init = source.index('    super.initState();', start) + len('    super.initState();')
+          navigation = """
+              Timer(const Duration(seconds: 45), () { if (mounted) go(3); });
+              Timer(const Duration(seconds: 90), () { if (mounted) go(4); });
+              Timer(const Duration(seconds: 135), () { if (mounted) go(7); });
+          """
+          path.write_text(source[:init] + navigation + source[init:])
+          PY
+          flutter build ios --simulator --debug --no-codesign
+
+      - name: Capture real iPad screens and verify native size
+        shell: bash
+        run: |
+          set -euo pipefail
+          device="$SIMULATOR_ID"
+          app="build/ios/iphonesimulator/Runner.app"
+          bundle_id="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")"
+          xcrun simctl status_bar "$device" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+          xcrun simctl install "$device" "$app"
+          xcrun simctl launch "$device" "$bundle_id"
+          sleep 30
+          mkdir -p screenshots/ipad-13
+          for name in 01-Home 02-Sponsorship-and-Donations 03-News 04-Account; do
+            file="screenshots/ipad-13/$name.png"
+            xcrun simctl io "$device" screenshot "$file"
+            sips -g pixelWidth -g pixelHeight "$file"
+            if [ "$name" != "04-Account" ]; then sleep 45; fi
+          done
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          import subprocess
+          accepted = {(2064, 2752), (2752, 2064), (2048, 2732), (2732, 2048)}
+          for path in sorted(Path('screenshots/ipad-13').glob('*.png')):
+              info = subprocess.check_output(['sips','-g','pixelWidth','-g','pixelHeight',str(path)], text=True)
+              w = int(re.search(r'pixelWidth:\s*(\d+)',info).group(1))
+              h = int(re.search(r'pixelHeight:\s*(\d+)',info).group(1))
+              print(f'{path.name}: {w}x{h}')
+              if (w,h) not in accepted:
+                  raise SystemExit(f'Unexpected iPad screenshot size: {w}x{h}; use a 13-inch simulator with App Store-compatible dimensions')
+          PY
+
+      - name: Upload 13-inch iPad screenshots for App Store Connect
+        uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-ipad-13-screenshots
+          path: screenshots/ipad-13/*.png
+          if-no-files-found: error
+          retention-days: 14
