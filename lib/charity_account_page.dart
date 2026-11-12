@@ -165,10 +165,8 @@ class _AccountState extends State<CharityAccountPage> {
   Future<void> deleteAccount() async {
     if (busy || token == null || user == null) return;
     final currentToken = token!;
-    final confirmationPassword = TextEditingController();
-    String? passwordToVerify;
-    try {
-      passwordToVerify = await showDialog<String>(
+    String passwordConfirmation = '';
+    final passwordToVerify = await showDialog<String>(
         context: context,
         builder: (dialogContext) => AlertDialog(
           title: const Text('حذف حسابي نهائيًا'),
@@ -182,7 +180,7 @@ class _AccountState extends State<CharityAccountPage> {
               ),
               const SizedBox(height: 16),
               TextField(
-                controller: confirmationPassword,
+                onChanged: (value) => passwordConfirmation = value,
                 obscureText: true,
                 autofillHints: const [AutofillHints.password],
                 decoration: const InputDecoration(
@@ -199,15 +197,12 @@ class _AccountState extends State<CharityAccountPage> {
             ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-              onPressed: () => Navigator.pop(dialogContext, confirmationPassword.text),
+              onPressed: () => Navigator.pop(dialogContext, passwordConfirmation),
               child: const Text('تأكيد حذف الحساب'),
             ),
           ],
         ),
       );
-    } finally {
-      confirmationPassword.dispose();
-    }
     if (!mounted || passwordToVerify == null) return;
     if (passwordToVerify.isEmpty) {
       setState(() => error = 'أدخل كلمة المرور الحالية لتأكيد الحذف');
@@ -238,7 +233,8 @@ class _AccountState extends State<CharityAccountPage> {
       });
     } catch (e) {
       if (mounted) {
-        setState(() => error = 'لم يُحذف الحساب: ${e.toString().replaceFirst('Exception: ', '')}');
+        final message = e.toString().replaceFirst('Exception: ', '');
+        setState(() => error = 'لم يُحذف الحساب: $message');
       }
     } finally {
       if (mounted) setState(() => busy = false);
