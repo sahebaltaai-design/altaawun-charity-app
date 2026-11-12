@@ -1,0 +1,51 @@
+name: Validate account deletion on Android and iOS
+
+on:
+  push:
+    branches: [fix/apple-account-deletion]
+    paths:
+      - 'lib/charity_account_page.dart'
+      - 'pubspec.yaml'
+      - '.github/workflows/verify-account-deletion.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android app compilation
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Prepare Android
+        run: |
+          flutter create --platforms=android --org com.altaawuncharity --project-name altaawun_charity_app .
+          bash tool/configure_app_name.sh && bash tool/configure_firebase.sh
+          flutter pub get
+      - name: Analyze shared account page
+        run: flutter analyze lib/charity_account_page.dart
+      - name: Compile debug APK (do not publish)
+        run: flutter build apk --debug --build-number=235
+
+  ios:
+    name: iOS simulator compilation
+    runs-on: macos-26-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Prepare iOS
+        run: |
+          flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
+          flutter pub get
+      - name: Analyze shared account page
+        run: flutter analyze lib/charity_account_page.dart
+      - name: Compile simulator build (do not publish)
+        run: flutter build ios --simulator --debug --no-codesign
