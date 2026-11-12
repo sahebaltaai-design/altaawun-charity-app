@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Al-Taawun App Push Notifications
  * Description: إشعارات Firebase تلقائية للمقالات والمنتجات الجديدة وإرسال يدوي من لوحة التحكم.
- * Version: 1.0.0
+ * Version: 1.0.1
  */
 if (!defined('ABSPATH')) exit;
 
@@ -45,23 +45,45 @@ function altaawun_fcm_access_token() {
 function altaawun_fcm_send($title, $message, $url = '') {
     $token = altaawun_fcm_access_token();
     if (is_wp_error($token)) return $token;
-    $payload = array('message'=>array(
-        'topic'=>'altaawun_updates',
-        'notification'=>array('title'=>wp_strip_all_tags($title), 'body'=>wp_strip_all_tags($message)),
-        'data'=>array('url'=>esc_url_raw($url)),
-        'android'=>array('priority'=>'high'),
-    ));
-    $response = wp_remote_post(
-        'https://fcm.googleapis.com/v1/projects/al-taawun-charity/messages:send',
-        array('timeout'=>20,'headers'=>array(
-            'Authorization'=>'Bearer '.$token,
-            'Content-Type'=>'application/json; charset=utf-8',
-        ),'body'=>wp_json_encode($payload))
-    );
-    if (is_wp_error($response)) return $response;
-    if (wp_remote_retrieve_response_code($response) !== 200) {
-        return new WP_Error('send_failed', 'Firebase HTTP '.wp_remote_retrieve_response_code($response));
+    // Compatible with the single tone/vibration topic used by existing builds.
+    // Do not send a second copy to altaawun_updates: new clients also listen
+    // there for backwards compatibility and would otherwise get duplicates.
+    $failed = array();
+    foreach (array('urgent', 'news', 'soft', 'default') as $tone) {
+        foreach (array('vibrate', 'silent') as $mode) {
+            $topic = 'altaawun_tone_'.$tone.'_'.$mode;
+            $payload = array('message'=>array(
+                'topic'=>$topic,
+                'notification'=>array('title'=>wp_strip_all_tags($title), 'body'=>wp_strip_all_tags($message)),
+                'data'=>array('url'=>esc_url_raw($url), 'type'=>'normal'),
+                'android'=>array(
+                    'priority'=>'NORMAL',
+                    'notification'=>array(
+                        'channel_id'=>'altaawun_tone_v2_'.$tone.'_'.$mode,
+                        'default_vibrate_timings'=>$mode==='vibrate',
+                    ),
+                ),
+                'apns'=>array(
+                    'headers'=>array('apns-push-type'=>'alert', 'apns-priority'=>'10'),
+                    'payload'=>array('aps'=>array(
+                        'sound'=>'default',
+                        'thread-id'=>'altaawun-normal',
+                    )),
+                ),
+            ));
+            $response = wp_remote_post(
+                'https://fcm.googleapis.com/v1/projects/al-taawun-charity/messages:send',
+                array('timeout'=>12,'headers'=>array(
+                    'Authorization'=>'Bearer '.$token,
+                    'Content-Type'=>'application/json; charset=utf-8',
+                ),'body'=>wp_json_encode($payload))
+            );
+            if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+                $failed[] = $topic;
+            }
+        }
     }
+    if ($failed) return new WP_Error('partial_send', 'تعذر الإرسال إلى قنوات: '.implode(', ', $failed));
     return true;
 }
 
