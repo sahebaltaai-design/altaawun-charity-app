@@ -26,6 +26,12 @@ jobs:
         run: |
           flutter create --platforms=android --org com.altaawuncharity --project-name altaawun_charity_app .
           bash tool/configure_app_name.sh && bash tool/configure_firebase.sh
+          python3 tool/generate_notification_tones.py
+          python3 tool/enable_android_desugaring.py
+          mkdir -p android/app/src/main/res/raw
+          for tone in urgent news soft; do
+            cp "assets/tones/${tone}.wav" "android/app/src/main/res/raw/altaawun_${tone}.wav"
+          done
           flutter pub get
       - name: Analyze shared account page
         run: flutter analyze --no-fatal-infos lib/charity_account_page.dart
@@ -44,6 +50,7 @@ jobs:
       - name: Prepare iOS
         run: |
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
+          python3 tool/generate_notification_tones.py
           flutter pub get
       - name: Analyze shared account page
         run: flutter analyze --no-fatal-infos lib/charity_account_page.dart
