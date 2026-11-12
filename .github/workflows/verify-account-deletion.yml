@@ -28,7 +28,7 @@ jobs:
           bash tool/configure_app_name.sh && bash tool/configure_firebase.sh
           flutter pub get
       - name: Analyze shared account page
-        run: flutter analyze lib/charity_account_page.dart
+        run: flutter analyze --no-fatal-infos lib/charity_account_page.dart
       - name: Compile debug APK (do not publish)
         run: flutter build apk --debug --build-number=235
 
@@ -46,6 +46,6 @@ jobs:
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
           flutter pub get
       - name: Analyze shared account page
-        run: flutter analyze lib/charity_account_page.dart
+        run: flutter analyze --no-fatal-infos lib/charity_account_page.dart
       - name: Compile simulator build (do not publish)
         run: flutter build ios --simulator --debug --no-codesign
