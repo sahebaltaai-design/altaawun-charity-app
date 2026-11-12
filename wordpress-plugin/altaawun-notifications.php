@@ -2,7 +2,7 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.3
+ * Version: 1.2.4
  */
 defined('ABSPATH') || exit;
 add_action('admin_menu', function () {
@@ -19,16 +19,22 @@ function altaawun_push_page() {
   echo '<div class="notice notice-info"><p>تمت معالجة إعدادات Firebase.</p></div>';
  }
  if (isset($_POST['altaawun_send']) && check_admin_referer('altaawun_push_send')) {
-  $result=altaawun_push_send(sanitize_text_field(wp_unslash($_POST['title'] ?? '')),sanitize_textarea_field(wp_unslash($_POST['body'] ?? '')),'',sanitize_key(wp_unslash($_POST['notification_type'] ?? 'normal')));
+  $result=altaawun_push_send(
+    sanitize_text_field(wp_unslash($_POST['title'] ?? '')),
+    sanitize_textarea_field(wp_unslash($_POST['body'] ?? '')),
+    esc_url_raw(wp_unslash($_POST['url'] ?? '')),
+    sanitize_key(wp_unslash($_POST['notification_type'] ?? 'normal'))
+  );
   echo '<div class="notice notice-info"><p>'.esc_html(is_wp_error($result)?$result->get_error_message():'تم قبول الإشعار من Firebase').'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية</h1><p>الموضوع: altaawun_updates</p>';
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية</h1><p>الإرسال إلى قنوات نغمات التطبيق الثماني (altaawun_tone_*). يُحافظ التطبيق أيضًا على اشتراك القناة القديمة للتوافق.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
  echo '<h2>إرسال إشعار يدوي</h2><form method="post">';
  wp_nonce_field('altaawun_push_send');
  echo '<p><input name="title" required maxlength="120" placeholder="عنوان الإشعار" class="regular-text"></p><p><textarea name="body" required maxlength="1000" placeholder="نص الإشعار" rows="4" style="width:90%"></textarea></p>';
+ echo '<p><input type="url" name="url" placeholder="رابط الخبر أو الحملة (اختياري)" class="regular-text" style="direction:ltr"></p>';
  echo '<p><label>نوع الإشعار <select name="notification_type"><option value="normal">عادي</option><option value="urgent">عاجل</option></select></label></p>';
  echo '<button class="button button-primary" name="altaawun_send">إرسال الإشعار</button></form><p>يُرسل إشعار تلقائي عند نشر مقال أو منتج جديد لأول مرة.</p></div>';
 }
@@ -45,13 +51,57 @@ function altaawun_push_send($title,$body,$url='',$type='normal') {
  $token=json_decode(wp_remote_retrieve_body($tokenResponse),true)['access_token']??'';
  if (!$token) return new WP_Error('oauth','تعذر الحصول على رمز Firebase.');
  $type=$type==='urgent'?'urgent':'normal';
- $channel=$type==='urgent'?'altaawun_urgent_v1':'altaawun_normal_v1';
- $message=['topic'=>'altaawun_updates','notification'=>['title'=>mb_substr($title,0,120),'body'=>mb_substr($body,0,1000)],'android'=>['priority'=>'high','notification'=>['channel_id'=>$channel,'default_vibrate_timings'=>true]]];
- $message['data']=['type'=>$type];
- if ($url) $message['data']['url']=$url;
- $response=wp_remote_post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($a['project_id']).'/messages:send',['timeout'=>20,'headers'=>['Authorization'=>'Bearer '.$token,'Content-Type'=>'application/json'],'body'=>wp_json_encode(['message'=>$message])]);
- if (is_wp_error($response)) return $response;
- if (wp_remote_retrieve_response_code($response)!==200) return new WP_Error('fcm','Firebase HTTP '.wp_remote_retrieve_response_code($response).' '.substr(wp_remote_retrieve_body($response),0,150));
+ $title=mb_substr($title,0,120);
+ $body=mb_substr($body,0,1000);
+ // Older builds subscribe to a single tone topic (and not altaawun_updates).
+ // Send exactly once to each tone/vibration topic. Every device is subscribed
+ // to one selected topic; do NOT also broadcast to altaawun_updates, which
+ // would cause duplicate notifications on new builds.
+ $failed=[];
+ foreach (['urgent','news','soft','default'] as $tone) {
+  foreach (['vibrate','silent'] as $vibration) {
+   $topic='altaawun_tone_'.$tone.'_'.$vibration;
+   $channel='altaawun_tone_v2_'.$tone.'_'.$vibration;
+   $message=[
+    'topic'=>$topic,
+    'notification'=>[
+     'title'=>$type==='urgent'?'عاجل: '.$title:$title,
+     'body'=>$body,
+    ],
+    'data'=>['type'=>$type],
+    'android'=>[
+     'priority'=>$type==='urgent'?'HIGH':'NORMAL',
+     'notification'=>[
+      'channel_id'=>$channel,
+      'default_vibrate_timings'=>$vibration==='vibrate',
+     ],
+    ],
+    'apns'=>[
+     'headers'=>['apns-push-type'=>'alert','apns-priority'=>'10'],
+     'payload'=>['aps'=>[
+      'sound'=>'default',
+      'thread-id'=>'altaawun-'.$type,
+     ]],
+    ],
+   ];
+   if ($url) $message['data']['url']=esc_url_raw($url);
+   $response=wp_remote_post(
+    'https://fcm.googleapis.com/v1/projects/'.rawurlencode($a['project_id']).'/messages:send',
+    ['timeout'=>12,'headers'=>[
+     'Authorization'=>'Bearer '.$token,
+     'Content-Type'=>'application/json',
+    ],'body'=>wp_json_encode(['message'=>$message])]
+   );
+   if (is_wp_error($response)) {
+    $failed[]=$topic.' (network)';
+   } elseif (wp_remote_retrieve_response_code($response)!==200) {
+    $failed[]=$topic.' (HTTP '.wp_remote_retrieve_response_code($response).')';
+   }
+  }
+ }
+ if ($failed) {
+  return new WP_Error('fcm_partial','تعذر إرسال الإشعار إلى بعض القنوات: '.implode(', ',$failed));
+ }
  return true;
 }
 add_action('transition_post_status',function($new,$old,$post){
