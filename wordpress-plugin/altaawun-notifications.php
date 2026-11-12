@@ -3,6 +3,7 @@
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
  * Version: 1.2.5
+ * Author: Saheb Altaai
  * Update URI: https://github.com/sahebaltaai-design/altaawun-charity-app
  * Requires PHP: 8.0
  * Requires at least: 5.8
@@ -30,7 +31,7 @@ function altaawun_push_page() {
   );
   echo '<div class="notice notice-info"><p>'.esc_html(is_wp_error($result)?$result->get_error_message():'تم قبول الإشعار من Firebase').'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية</h1><p>الإرسال إلى قنوات نغمات التطبيق الثماني (altaawun_tone_*). يُحافظ التطبيق أيضًا على اشتراك القناة القديمة للتوافق.</p>';
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية</h1><p><strong>الإصدار: 1.2.5</strong><br><span dir="ltr" style="display:inline-block">By Saheb Altaai</span></p><p>الإرسال إلى قنوات نغمات التطبيق الثماني (altaawun_tone_*). يُحافظ التطبيق أيضًا على اشتراك القناة القديمة للتوافق.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
