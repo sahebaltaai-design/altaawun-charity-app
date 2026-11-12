@@ -1,0 +1,74 @@
+name: Package and publish Al-Taawun Notifications
+
+on:
+  push:
+    branches: [main, feature/notifications-github-updater]
+    paths:
+      - wordpress-plugin/altaawun-notifications.php
+      - .github/workflows/publish-notifications-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate WordPress plugin and updater
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -l wordpress-plugin/altaawun-notifications.php
+          php -r '$s=file_get_contents("wordpress-plugin/altaawun-notifications.php"); if (!str_contains($s, "Update URI: https://github.com/sahebaltaai-design/altaawun-charity-app") || !str_contains($s, "update_plugins_github.com")) exit(1);'
+      - name: Make reproducible installable ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^ \* Version: \([0-9.]*\)$/\1/p' wordpress-plugin/altaawun-notifications.php | head -n1)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          mkdir -p dist/altaawun-notifications
+          cp wordpress-plugin/altaawun-notifications.php dist/altaawun-notifications/altaawun-notifications.php
+          ( cd dist && zip -r -9 "altaawun-notifications-$version.zip" altaawun-notifications )
+          test -f "dist/altaawun-notifications-$version.zip"
+          unzip -Z -1 "dist/altaawun-notifications-$version.zip" | grep -Fx 'altaawun-notifications/altaawun-notifications.php'
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-notifications-release-package
+          path: dist/altaawun-notifications-*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: altaawun-notifications-release-package
+          path: dist
+      - name: Publish only verified notification version from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^ \* Version: \([0-9.]*\)$/\1/p' wordpress-plugin/altaawun-notifications.php | head -n1)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          tag="altaawun-notifications-v$version"
+          package="dist/altaawun-notifications-$version.zip"
+          test -f "$package"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists: do not overwrite"
+            exit 0
+          fi
+          gh release create "$tag" "$package" --target "$GITHUB_SHA" --title "إشعارات الجمعية $version" --notes "تحديث إضافة إشعارات جمعية التعاون الخيرية $version. تحديثات WordPress من GitHub مع الاحتفاظ بإعدادات Firebase." --latest=false
