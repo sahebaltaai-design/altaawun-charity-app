@@ -2,7 +2,10 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.4
+ * Version: 1.2.5
+ * Update URI: https://github.com/sahebaltaai-design/altaawun-charity-app
+ * Requires PHP: 8.0
+ * Requires at least: 5.8
  */
 defined('ABSPATH') || exit;
 add_action('admin_menu', function () {
@@ -206,3 +209,123 @@ add_action('rest_api_init',function(){
   return rest_ensure_response(array_values(array_map(function($tone){return ['name'=>$tone['name'],'url'=>$tone['url']];},is_array($tones)?$tones:[])));
  }]);
 });
+
+
+/**
+ * Self-hosted plugin updates.
+ *
+ * WordPress checks the public GitHub Releases feed for releases tagged
+ * "altaawun-notifications-vX.Y.Z". The update package must be named
+ * "altaawun-notifications-X.Y.Z.zip" and contain the standard
+ * "altaawun-notifications/altaawun-notifications.php" path.
+ *
+ * Version 1.2.5 is the one-time manual bootstrap; subsequent versions use
+ * the native WordPress updater. Automatic installation is opt-in from the
+ * normal Plugins screen and is never silently enabled by this code.
+ */
+function altaawun_notifications_release_info() {
+    $cached = get_transient('altaawun_notifications_release_v1');
+    if (false !== $cached) {
+        return is_array($cached) ? $cached : false;
+    }
+
+    $api = 'https://api.github.com/repos/sahebaltaai-design/altaawun-charity-app/releases?per_page=30';
+    $response = wp_remote_get($api, array(
+        'timeout' => 8,
+        'headers' => array(
+            'Accept' => 'application/vnd.github+json',
+            'User-Agent' => 'Altaawun-Notifications-WordPress',
+        ),
+    ));
+    if (is_wp_error($response) || 200 !== wp_remote_retrieve_response_code($response)) {
+        set_transient('altaawun_notifications_release_v1', 'unavailable', 30 * MINUTE_IN_SECONDS);
+        return false;
+    }
+
+    $releases = json_decode(wp_remote_retrieve_body($response), true);
+    if (!is_array($releases)) {
+        set_transient('altaawun_notifications_release_v1', 'unavailable', 30 * MINUTE_IN_SECONDS);
+        return false;
+    }
+
+    $best = false;
+    foreach ($releases as $release) {
+        if (!is_array($release) || !empty($release['draft']) || !empty($release['prerelease'])) {
+            continue;
+        }
+        $tag = isset($release['tag_name']) ? (string) $release['tag_name'] : '';
+        if (!preg_match('/^altaawun-notifications-v([0-9]+\\.[0-9]+\\.[0-9]+)$/', $tag, $matches)) {
+            continue;
+        }
+        $version = $matches[1];
+        $expected = 'altaawun-notifications-' . $version . '.zip';
+        if (empty($release['assets']) || !is_array($release['assets'])) {
+            continue;
+        }
+        foreach ($release['assets'] as $asset) {
+            if (!is_array($asset) || ($asset['name'] ?? '') !== $expected) {
+                continue;
+            }
+            $package = (string) ($asset['browser_download_url'] ?? '');
+            if ('https' !== wp_parse_url($package, PHP_URL_SCHEME)
+                || 'github.com' !== wp_parse_url($package, PHP_URL_HOST)) {
+                continue;
+            }
+            if (!$best || version_compare($version, $best['version'], '>')) {
+                $best = array(
+                    'version' => $version,
+                    'package' => $package,
+                    'url' => esc_url_raw((string) ($release['html_url'] ?? '')),
+                    'description' => sanitize_textarea_field((string) ($release['body'] ?? '')),
+                );
+            }
+        }
+    }
+
+    set_transient('altaawun_notifications_release_v1', $best ? $best : 'unavailable', 6 * HOUR_IN_SECONDS);
+    return $best;
+}
+
+// WordPress 5.8+ custom Update URI mechanism.
+add_filter('update_plugins_github.com', function ($update, $plugin_data, $plugin_file, $locales) {
+    if ($plugin_file !== plugin_basename(__FILE__)) {
+        return $update;
+    }
+    $release = altaawun_notifications_release_info();
+    if (!$release || !version_compare($release['version'], $plugin_data['Version'], '>')) {
+        return false;
+    }
+    return array(
+        'slug' => 'altaawun-notifications',
+        'version' => $release['version'],
+        'url' => $release['url'],
+        'package' => $release['package'],
+        'requires' => '5.8',
+        'requires_php' => '8.0',
+    );
+}, 10, 4);
+
+// "View version details" in the native WordPress plugin update screen.
+add_filter('plugins_api', function ($result, $action, $args) {
+    if ('plugin_information' !== $action || empty($args->slug) || 'altaawun-notifications' !== $args->slug) {
+        return $result;
+    }
+    $release = altaawun_notifications_release_info();
+    if (!$release) {
+        return $result;
+    }
+    return (object) array(
+        'name' => 'إشعارات جمعية التعاون الخيرية',
+        'slug' => 'altaawun-notifications',
+        'version' => $release['version'],
+        'author' => 'Al-Taawun Charity Association',
+        'homepage' => 'https://github.com/sahebaltaai-design/altaawun-charity-app',
+        'download_link' => $release['package'],
+        'requires' => '5.8',
+        'requires_php' => '8.0',
+        'sections' => array(
+            'description' => 'إشعارات الجمعية وربط Firebase. تحصل الإضافة على تحديثات من إصدارات GitHub الرسمية فقط.',
+            'changelog' => nl2br(esc_html($release['description'])),
+        ),
+    );
+}, 10, 3);
