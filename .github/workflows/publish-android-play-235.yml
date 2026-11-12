@@ -1,5 +1,5 @@
 
-name: Release Android 1.0.4 (235) to closed Alpha if authorized
+name: Release Android 1.0.4 (249) to closed Alpha if authorized
 
 on:
   push:
@@ -113,6 +113,32 @@ jobs:
           p.write_text(s)
           PY
 
+      - name: Work around upstream url_launcher_android JavaDoc lint parser crash in release builds
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('android/build.gradle.kts')
+          if not path.exists():
+              raise SystemExit('Expected Android root Gradle Kotlin script not found')
+          text = path.read_text()
+          workaround = '''
+          // CI workaround for Android Lint JavaDocParser NoSuchMethodError in
+          // url_launcher_android:lintVitalAnalyzeRelease on current AGP.
+          // Only this dependency task is skipped; project compilation remains enabled.
+          subprojects {
+              if (name == "url_launcher_android") {
+                  tasks.configureEach {
+                      if (name == "lintVitalAnalyzeRelease") {
+                          enabled = false
+                      }
+                  }
+              }
+          }
+          '''
+          if 'CI workaround for Android Lint JavaDocParser' not in text:
+              path.write_text(text + '\\n' + workaround)
+          PY
+
       - name: Generate Android launcher icons from charity emblem
         run: |
           python3 -m pip install --user Pillow numpy
@@ -219,7 +245,7 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build appbundle --release --build-number=235 --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
+        run: flutter build appbundle --release --build-number=249 --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
 
       - name: Upload signed Play Store AAB
         if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
@@ -241,12 +267,12 @@ jobs:
           packageName: com.altaawuncharity.altaawun_charity_app
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           tracks: alpha
-          releaseName: 1.0.4 (235) - account deletion
+          releaseName: 1.0.4 (249) - account deletion
           status: completed
           inAppUpdatePriority: 2
 
       - name: Build APK
-        run: flutter build apk --debug --build-number=235 --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
+        run: flutter build apk --debug --build-number=249 --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
