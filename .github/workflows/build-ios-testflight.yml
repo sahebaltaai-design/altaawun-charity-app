@@ -2,6 +2,10 @@ name: Build iOS IPA and TestFlight
 
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/ios-fcm-notifications]
+    paths:
+      - .github/workflows/build-ios-testflight.yml
 
 permissions:
   contents: read

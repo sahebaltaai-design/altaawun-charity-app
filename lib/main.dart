@@ -39,10 +39,14 @@ final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotifica
 final ValueNotifier<String?> notificationTapUrl = ValueNotifier<String?>(null);
 
 Future<void> _initializeNotificationChannels() async {
-  // These channels and the icon resource are Android-only.
-  if (defaultTargetPlatform != TargetPlatform.android) return;
+  // Register tap handling on iOS and Android. Only Android creates channels.
   await _localNotifications.initialize(const InitializationSettings(
     android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    iOS: DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestSoundPermission: false,
+      requestBadgePermission: false,
+    ),
   ), onDidReceiveNotificationResponse: (response) {
     notificationTapUrl.value = response.payload;
   });
@@ -50,6 +54,7 @@ Future<void> _initializeNotificationChannels() async {
   if (launch?.didNotificationLaunchApp == true) {
     notificationTapUrl.value = launch?.notificationResponse?.payload;
   }
+  if (defaultTargetPlatform != TargetPlatform.android) return;
   final android = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
   for (final tone in const ['urgent', 'news', 'soft', 'default']) {
     for (final vibration in [true, false]) {
@@ -736,6 +741,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   String _homeTileSize = 'medium';
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
+    // Apple displays the original FCM notification natively in the foreground.
+    // Do not create a second local notification, which causes duplicates.
+    if (defaultTargetPlatform != TargetPlatform.android) return;
     final tone = const ['urgent', 'news', 'soft', 'default'].contains(_notificationTone)
         ? _notificationTone : 'default';
     final channelId = _notificationChannelPrefix + tone + (_notificationVibration ? '_vibrate' : '_silent');
@@ -759,7 +767,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         ? _notificationTone : 'default';
     final desired = 'altaawun_tone_' + tone + (_notificationVibration ? '_vibrate' : '_silent');
     final messaging = FirebaseMessaging.instance;
-    // Remove legacy broadcasts to prevent duplicate notifications.
+    // Compatibility with existing WordPress sites still sending to the common
+    // topic. New senders target exactly one selected tone topic per device.
+    await messaging.subscribeToTopic('altaawun_updates');
     await messaging.subscribeToTopic(desired);
     for (final candidate in const ['urgent', 'news', 'soft', 'default']) {
       for (final mode in const ['_vibrate', '_silent']) {
@@ -767,7 +777,6 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         if (topic != desired) await messaging.unsubscribeFromTopic(topic);
       }
     }
-    await messaging.unsubscribeFromTopic('altaawun_updates');
   }
 
   Future<void> _loadNotificationPreferences() async {
@@ -869,7 +878,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             ]),
             SwitchListTile(title: const Text('الاهتزاز'), value: vibration,
               onChanged: (value) => update(() => vibration = value)),
-            const Text('تُطبّق النغمة المختارة أثناء فتح التطبيق. إشعارات الخلفية تعتمد على قناة Android وإعدادات Firebase.',
+            const Text('تُطبّق النغمة المختارة على إشعارات Android عند دعم قناة الصوت. على iPhone يعتمد صوت واهتزاز إشعارات الخلفية على إعدادات iOS والصوت المضمّن مع التطبيق.',
               style: TextStyle(fontSize: 12)),
           ])),
           actions: [
@@ -997,6 +1006,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       debugPrint('Notification authorization: ${permission.authorizationStatus}');
       if (mounted) setState(() => _pushDiagnostic = 'صلاحية الإشعارات: ${permission.authorizationStatus}');
       if (defaultTargetPlatform == TargetPlatform.iOS) {
+        // Let APNs display a banner/badge/sound even while the app is open.
+        await messaging.setForegroundNotificationPresentationOptions(
+          alert: true, badge: true, sound: true,
+        );
         // APNs registration is asynchronous on real iPhones. FCM token/topic
         // calls before the APNs token exists can fail and abort setup.
         String? apnsToken;
@@ -1013,8 +1026,20 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         if (mounted) setState(() => _pushDiagnostic = 'تم تسجيل APNs؛ جاري طلب FCM');
       }
       final token = await messaging.getToken();
-      if (mounted) setState(() { _fcmToken = token; _pushDiagnostic = token == null ? 'لم يُصدر Firebase رمز FCM' : 'تم تسجيل الجهاز بنجاح'; });
-      try { await _syncNotificationToneTopic(); } catch (error) { debugPrint('Push topic sync failed: $error'); }
+      if (mounted) setState(() {
+        _fcmToken = token;
+        _pushDiagnostic = token == null ? 'لم يُصدر Firebase رمز FCM' : 'تم تسجيل الجهاز؛ جاري الاشتراك في الإشعارات';
+      });
+      try {
+        // Read stored preference before selecting a topic; initState starts
+        // preference loading and FCM registration concurrently.
+        await _loadNotificationPreferences();
+        await _syncNotificationToneTopic();
+        if (mounted && token != null) setState(() => _pushDiagnostic = 'تم تسجيل الجهاز والاشتراك في الإشعارات بنجاح');
+      } catch (error) {
+        debugPrint('Push topic sync failed: $error');
+        if (mounted) setState(() => _pushDiagnostic = 'تم تسجيل الجهاز لكن فشل الاشتراك في قنوات الإشعارات');
+      }
       FirebaseMessaging.instance.onTokenRefresh.listen((value) {
         if (mounted) setState(() => _fcmToken = value);
       });
@@ -1025,6 +1050,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       }
       FirebaseMessaging.onMessage.listen((message) {
         if (!mounted) return;
+        // iOS presents the system banner; Android needs a local notification.
+        if (defaultTargetPlatform == TargetPlatform.iOS) return;
         _showForegroundNotification(message);
         final url = (message.data['url'] ?? '').toString();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
