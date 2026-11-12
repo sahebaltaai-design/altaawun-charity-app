@@ -113,7 +113,7 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Work around upstream url_launcher_android JavaDoc lint parser crash in release builds
+      - name: Work around upstream plugin JavaDoc lint parser crash in release builds
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -123,10 +123,10 @@ jobs:
           text = path.read_text()
           workaround = '''
           // CI workaround for Android Lint JavaDocParser NoSuchMethodError in
-          // url_launcher_android:lintVitalAnalyzeRelease on current AGP.
+          // url_launcher_android and webview_flutter_android release lint on current AGP.
           // Only this dependency task is skipped; project compilation remains enabled.
           subprojects {
-              if (name == "url_launcher_android") {
+              if (name == "url_launcher_android" || name == "webview_flutter_android") {
                   tasks.configureEach {
                       if (name == "lintVitalAnalyzeRelease") {
                           enabled = false
