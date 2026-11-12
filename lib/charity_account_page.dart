@@ -16,7 +16,15 @@ class _AccountState extends State<CharityAccountPage> {
   static const storage = FlutterSecureStorage();
   final email = TextEditingController();
   final password = TextEditingController();
-  final name = TextEditingController();
+  final firstName = TextEditingController();
+  final lastName = TextEditingController();
+  final phone = TextEditingController();
+  final country = TextEditingController(text: 'IQ');
+  final state = TextEditingController();
+  final city = TextEditingController();
+  final address = TextEditingController();
+  final address2 = TextEditingController();
+  final postcode = TextEditingController();
   String? token, error;
   Map<String, dynamic>? user;
   List<dynamic> orders = [];
@@ -26,7 +34,15 @@ class _AccountState extends State<CharityAccountPage> {
   @override
   void initState() { super.initState(); restore(); }
   @override
-  void dispose() { email.dispose(); password.dispose(); name.dispose(); super.dispose(); }
+  void dispose() {
+    for (final controller in [
+      email, password, firstName, lastName, phone, country,
+      state, city, address, address2, postcode,
+    ]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   Future<Map<String, dynamic>> api(String path, {Map<String, String>? body, String? bearer}) async {
     final headers = <String, String>{'Accept': 'application/json'};
@@ -46,6 +62,12 @@ class _AccountState extends State<CharityAccountPage> {
         'rate_limited': 'محاولات كثيرة، حاول لاحقًا',
         'invalid_fields': 'تأكد من البيانات وكلمة المرور (12 حرفًا على الأقل)',
         'session_expired': 'انتهت الجلسة، سجل الدخول مرة أخرى',
+        'invalid_current_password': 'كلمة المرور الحالية غير صحيحة',
+        'invalid_confirmation': 'لم يتم تأكيد طلب حذف الحساب',
+        'account_delete_failed': 'تعذر حذف الحساب من الخادم. حاول مجددًا',
+        'protected_account': 'لا يمكن حذف حساب الإدارة من التطبيق',
+        'invalid_phone': 'أدخل رقم هاتف صحيحًا',
+        'invalid_country': 'اختر رمز دولة صحيحًا مثل IQ أو US',
       };
       throw Exception(messages[code] ?? 'فشل الاتصال: ' + response.statusCode.toString());
     }
@@ -68,7 +90,12 @@ class _AccountState extends State<CharityAccountPage> {
   Future<void> submit() async {
     if (busy) return;
     if (email.text.trim().isEmpty || (mode != 'forgot' && password.text.isEmpty) ||
-        (mode == 'register' && (name.text.trim().isEmpty || password.text.length < 12))) {
+        (mode == 'register' && (
+          firstName.text.trim().isEmpty || lastName.text.trim().isEmpty ||
+          phone.text.trim().isEmpty || country.text.trim().isEmpty ||
+          state.text.trim().isEmpty || city.text.trim().isEmpty ||
+          address.text.trim().isEmpty || password.text.length < 12
+        ))) {
       setState(() => error = 'أكمل البيانات المطلوبة؛ كلمة مرور التسجيل 12 حرفًا على الأقل');
       return;
     }
@@ -76,8 +103,20 @@ class _AccountState extends State<CharityAccountPage> {
     try {
       final current = mode;
       final fields = current == 'forgot' ? {'email': email.text.trim()} :
-        current == 'register' ? {'email': email.text.trim(), 'password': password.text, 'name': name.text.trim()} :
-        {'login': email.text.trim(), 'password': password.text};
+        current == 'register' ? {
+          'email': email.text.trim(),
+          'password': password.text,
+          'name': '${firstName.text.trim()} ${lastName.text.trim()}',
+          'billing_first_name': firstName.text.trim(),
+          'billing_last_name': lastName.text.trim(),
+          'billing_phone': phone.text.trim(),
+          'billing_country': country.text.trim().toUpperCase(),
+          'billing_state': state.text.trim(),
+          'billing_city': city.text.trim(),
+          'billing_address_1': address.text.trim(),
+          'billing_address_2': address2.text.trim(),
+          'billing_postcode': postcode.text.trim(),
+        } : {'login': email.text.trim(), 'password': password.text};
       final result = await api(current == 'forgot' ? 'forgot-password' : current, body: fields);
       if (!mounted) return;
       if (current == 'forgot') {
@@ -123,6 +162,89 @@ class _AccountState extends State<CharityAccountPage> {
     if (mounted) setState(() { token = null; user = null; orders = []; busy = false; mode = 'login'; });
   }
 
+  Future<void> deleteAccount() async {
+    if (busy || token == null || user == null) return;
+    final currentToken = token!;
+    final confirmationPassword = TextEditingController();
+    String? passwordToVerify;
+    try {
+      passwordToVerify = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('حذف حسابي نهائيًا'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text(
+                'سيُحذف حسابك في الجمعية وبيانات ملفك الشخصي المرتبطة به. '
+                'قد تحتفظ الجمعية بسجلات التبرعات والطلبات اللازمة للمحاسبة '
+                'والالتزامات القانونية وفق سياسة الخصوصية. '
+                'لا يمكن التراجع عن حذف الحساب.',
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: confirmationPassword,
+                obscureText: true,
+                autofillHints: const [AutofillHints.password],
+                decoration: const InputDecoration(
+                  labelText: 'كلمة المرور الحالية للتأكيد',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+              onPressed: () => Navigator.pop(dialogContext, confirmationPassword.text),
+              child: const Text('تأكيد حذف الحساب'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      confirmationPassword.dispose();
+    }
+    if (!mounted || passwordToVerify == null) return;
+    if (passwordToVerify.isEmpty) {
+      setState(() => error = 'أدخل كلمة المرور الحالية لتأكيد الحذف');
+      return;
+    }
+    setState(() { busy = true; error = null; });
+    try {
+      final result = await api(
+        'delete-account',
+        body: {'password': passwordToVerify, 'confirm': 'DELETE'},
+        bearer: currentToken,
+      );
+      if (result['deleted'] != true) {
+        throw Exception('لم يؤكد الخادم حذف الحساب');
+      }
+      // The server permanently invalidates this token after deleting the user.
+      // Do not log out locally until the server confirms deletion.
+      await storage.delete(key: 'altaawun_token');
+      if (!mounted) return;
+      password.clear();
+      email.clear();
+      setState(() {
+        token = null;
+        user = null;
+        orders = [];
+        mode = 'login';
+        error = 'تم حذف حسابك من الخادم بنجاح.';
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => error = 'لم يُحذف الحساب: ${e.toString().replaceFirst('Exception: ', '')}');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(18), children: [
     const SizedBox(height: 16),
@@ -155,12 +277,49 @@ class _AccountState extends State<CharityAccountPage> {
         subtitle: Text('التاريخ: ' + (order['date']?.toString() ?? '') + ' | الحالة: ' + (order['status']?.toString() ?? '')),
         trailing: Text((order['total']?.toString() ?? '') + ' ' + (order['currency']?.toString() ?? '')))),
       OutlinedButton.icon(onPressed: busy ? null : logout, icon: const Icon(Icons.logout), label: const Text('تسجيل الخروج')),
+      const SizedBox(height: 12),
+      TextButton.icon(
+        onPressed: busy ? null : deleteAccount,
+        icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+        label: const Text('حذف حسابي نهائيًا', style: TextStyle(color: Colors.red)),
+      ),
+      const Text(
+        'يمكنك حذف حسابك من داخل التطبيق. قد تحتفظ الجمعية بسجلات '
+        'التبرعات المطلوبة للمحاسبة وفق سياسة الخصوصية.',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 12, color: Colors.black54),
+      ),
     ] else ...[
       Text(mode == 'register' ? 'إنشاء حساب جديد' : mode == 'forgot' ? 'استعادة كلمة المرور' : 'تسجيل الدخول',
         textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
       if (mode == 'register') ...[
-        TextField(controller: name, decoration: const InputDecoration(labelText: 'الاسم', border: OutlineInputBorder())),
+        TextField(controller: firstName, textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'الاسم الأول *', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: lastName, textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'اسم العائلة *', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: phone, keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(labelText: 'رقم الهاتف *', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: country, textCapitalization: TextCapitalization.characters,
+          decoration: const InputDecoration(labelText: 'رمز الدولة * (IQ، US...)', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: state,
+          decoration: const InputDecoration(labelText: 'المحافظة / الولاية *', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: city,
+          decoration: const InputDecoration(labelText: 'المدينة *', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: address,
+          decoration: const InputDecoration(labelText: 'العنوان *', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: address2,
+          decoration: const InputDecoration(labelText: 'عنوان إضافي (اختياري)', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        TextField(controller: postcode,
+          decoration: const InputDecoration(labelText: 'الرمز البريدي (اختياري)', border: OutlineInputBorder())),
         const SizedBox(height: 12),
       ],
       TextField(controller: email, keyboardType: TextInputType.emailAddress,
