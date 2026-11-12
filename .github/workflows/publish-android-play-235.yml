@@ -136,7 +136,7 @@ jobs:
           }
           '''
           if 'CI workaround for Android Lint JavaDocParser' not in text:
-              path.write_text(text + '\\n' + workaround)
+              path.write_text(text + chr(10) + workaround)
           PY
 
       - name: Generate Android launcher icons from charity emblem
