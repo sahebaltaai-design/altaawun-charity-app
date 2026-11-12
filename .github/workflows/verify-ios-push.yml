@@ -1,0 +1,64 @@
+name: Verify iOS push fix and package WordPress plugin
+
+on:
+  push:
+    branches: [fix/ios-fcm-notifications]
+    paths: [.github/workflows/verify-ios-push.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wordpress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PHP syntax
+        run: |
+          php -l wordpress-plugin/altaawun-notifications.php
+          php -l wordpress-plugin/altaawun-app-push.php
+      - name: Validate shared FCM topic names and iOS support
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          app = Path('lib/main.dart').read_text()
+          php = Path('wordpress-plugin/altaawun-notifications.php').read_text()
+          legacy = Path('wordpress-plugin/altaawun-app-push.php').read_text()
+          assert "await messaging.subscribeToTopic('altaawun_updates');" in app
+          assert "await messaging.subscribeToTopic(desired);" in app
+          assert "setForegroundNotificationPresentationOptions" in app
+          assert "DarwinInitializationSettings" in app
+          assert "'apns-push-type'=>'alert'" in php
+          assert "'sound'=>'default'" in php
+          assert "altaawun_tone_" in php and "altaawun_tone_" in legacy
+          assert "altaawun_tone_v2_" in php
+          print('FCM client/server compatibility checks passed')
+          PY
+      - name: Prepare installable WordPress ZIP
+        run: |
+          mkdir -p dist/altaawun-notifications
+          cp wordpress-plugin/altaawun-notifications.php dist/altaawun-notifications/altaawun-notifications.php
+          (cd dist && zip -r -9 altaawun-notifications-1.2.4.zip altaawun-notifications)
+      - name: Upload WordPress plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-notifications-wordpress-1.2.4
+          path: dist/altaawun-notifications-1.2.4.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  ios-simulator:
+    runs-on: macos-26-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Build iOS simulator app (no signing or App Store upload)
+        run: |
+          flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
+          flutter pub get
+          flutter build ios --simulator --debug --no-codesign
