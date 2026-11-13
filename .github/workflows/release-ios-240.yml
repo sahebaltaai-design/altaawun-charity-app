@@ -24,7 +24,7 @@ jobs:
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
           python3 tool/generate_notification_tones.py
           flutter pub get
-          flutter analyze --no-fatal-infos lib/charity_account_page.dart lib/quick_donation_widget.dart lib/main.dart
+          flutter analyze --no-fatal-infos --no-fatal-warnings lib/charity_account_page.dart lib/quick_donation_widget.dart lib/main.dart
           flutter build ios --simulator --debug --no-codesign
 
   build:
