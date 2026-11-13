@@ -31,6 +31,8 @@ class _AccountState extends State<CharityAccountPage> {
   List<dynamic> orders = [];
   String mode = 'login';
   bool busy = false;
+  String? deletionStatus;
+  bool? deletionAllowed;
 
   @override
   void initState() {
@@ -232,12 +234,55 @@ class _AccountState extends State<CharityAccountPage> {
     setState(() => busy = true);
     try { if (old != null) await api('logout', body: {}, bearer: old); } catch (_) {}
     await storage.delete(key: 'altaawun_token');
-    if (mounted) setState(() { token = null; user = null; orders = []; busy = false; mode = 'login'; });
+    if (mounted) setState(() {
+      token = null; user = null; orders = []; busy = false; mode = 'login';
+      deletionStatus = null; deletionAllowed = null;
+    });
+  }
+
+  /// Safely diagnose the WordPress account behind this app's Bearer token.
+  /// The check never sends a password and cannot modify or delete anything.
+  Future<bool> verifyDeletionEligibility() async {
+    if (busy || token == null || user == null) return false;
+    setState(() { busy = true; deletionStatus = null; deletionAllowed = null; });
+    try {
+      final info = await api('account-status', bearer: token);
+      if (!mounted) return false;
+      final currentId = int.tryParse('${user!['id']}');
+      final serverId = int.tryParse('${info['account_id']}');
+      if (currentId == null || serverId == null || currentId != serverId) {
+        setState(() => deletionStatus =
+            'تم اكتشاف اختلاف بين الحساب المعروض والحساب المسجل في الخادم. '
+            'لم يتم حذف أي شيء. سجّل الخروج ثم ادخل مجددًا.');
+        return false;
+      }
+      final role = (info['role'] ?? 'غير معروف').toString();
+      final eligible = info['can_self_delete'] == true;
+      setState(() {
+        deletionAllowed = eligible;
+        deletionStatus = eligible
+            ? 'نتيجة الفحص: الخادم يرى الحساب بدور ($role) ويسمح بالحذف. '
+              'إذا استمر رفض الحذف فهذا تعارض في مسار الحذف نفسه.'
+            : 'نتيجة الفحص: الخادم يرى الحساب بدور ($role) ولا يسمح بحذفه. '
+              'قارن هذا الدور مع دور الحساب في WordPress، دون تغيير الصلاحيات.';
+      });
+      return eligible;
+    } catch (e) {
+      if (mounted) setState(() => deletionStatus =
+          'تعذر فحص صلاحيات الحساب: ${e.toString().replaceFirst('Exception: ', '')}. '
+          'لم يتم إجراء أي حذف.');
+      return false;
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
   }
 
   Future<void> deleteAccount() async {
     if (busy || token == null || user == null) return;
     final currentToken = token!;
+    // Confirm the exact user and role the backend sees before the destructive
+    // request. This is the same Bearer identity used for account deletion.
+    if (!await verifyDeletionEligibility() || !mounted) return;
     String passwordConfirmation = '';
     final passwordToVerify = await showDialog<String>(
         context: context,
@@ -307,7 +352,11 @@ class _AccountState extends State<CharityAccountPage> {
     } catch (e) {
       if (mounted) {
         final message = e.toString().replaceFirst('Exception: ', '');
-        setState(() => error = 'لم يُحذف الحساب: $message');
+        setState(() {
+          error = deletionAllowed == true && message.contains('صلاحيات')
+              ? 'تعارض بين فحص الصلاحيات ومسار الحذف: $message'
+              : 'لم يُحذف الحساب: $message';
+        });
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -351,6 +400,16 @@ class _AccountState extends State<CharityAccountPage> {
         onPressed: busy ? null : deleteAccount,
         icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
         label: const Text('حذف حسابي نهائيًا', style: TextStyle(color: Colors.red)),
+      ),
+      OutlinedButton.icon(
+        onPressed: busy ? null : () { verifyDeletionEligibility(); },
+        icon: const Icon(Icons.verified_user_outlined),
+        label: const Text('فحص صلاحية حذف الحساب (دون حذف)'),
+      ),
+      if (deletionStatus != null) Padding(
+        padding: const EdgeInsets.all(10),
+        child: Text(deletionStatus!, textAlign: TextAlign.center,
+          style: const TextStyle(color: Color(0xFF075C39))),
       ),
       const Text(
         'يمكنك حذف حسابك من داخل التطبيق. قد تحتفظ الجمعية بسجلات '
