@@ -223,15 +223,21 @@ class ProductDetailScreen extends StatelessWidget {
           Text(description, style: const TextStyle(fontSize: 16, height: 1.6)),
         ],
         const SizedBox(height: 26),
-        FilledButton.icon(
-          onPressed: validLink ? () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => DonationWebScreen(url: link))) : null,
-          icon: const Icon(Icons.volunteer_activism),
-          label: const Text('تبرع الآن'),
-        ),
-        const SizedBox(height: 8),
-        const Text('يتم إكمال التبرع عبر صفحة المنتج الآمنة على موقع الجمعية داخل التطبيق.',
-          textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
+        // Apple review: hide unfinished donation/payment actions on iOS.
+        // Android retains the existing purchase flow unchanged.
+        if (defaultTargetPlatform != TargetPlatform.iOS) ...[
+          FilledButton.icon(
+            onPressed: validLink ? () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => DonationWebScreen(url: link))) : null,
+            icon: const Icon(Icons.volunteer_activism),
+            label: const Text('تبرع الآن'),
+          ),
+          const SizedBox(height: 8),
+          const Text('يتم إكمال التبرع عبر صفحة المنتج الآمنة على موقع الجمعية داخل التطبيق.',
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
+        ] else
+          const Text('للاطلاع على تفاصيل برامج الجمعية. التبرع الإلكتروني غير متاح حاليًا في نسخة iPhone.',
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
       ]),
     );
   }
@@ -2420,7 +2426,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         _feature(Icons.school, 'المرافق والمدرسون'),
         _feature(Icons.photo_library, 'الصور والفيديوهات'),
       ] else if (page == 3) ...[
-        _donationCategories(),
+        if (defaultTargetPlatform == TargetPlatform.iOS) ...[
+          const _IosDonationInformation(),
+        ] else
+          _donationCategories(),
       ] else if (page == 4) ...[
         _newsFeed(),
       ] else if (page == 6) ...[
@@ -2436,6 +2445,28 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   );
   Widget _disabledAction(String text) => FilledButton(
     onPressed: null, child: Padding(padding: const EdgeInsets.all(10), child: Text(text)),
+  );
+}
+
+// Informational-only donation section for iOS until the charity's payment
+// gateway is configured and the external Safari checkout is verified.
+class _IosDonationInformation extends StatelessWidget {
+  const _IosDonationInformation();
+
+  @override
+  Widget build(BuildContext context) => const Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text('برامج التبرعات والمساهمات',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: deepGreen)),
+      SizedBox(height: 16),
+      Text('تعمل جمعية التعاون الخيرية على دعم الأيتام والتعليم والمبادرات الإنسانية.',
+        textAlign: TextAlign.center, style: TextStyle(fontSize: 16, height: 1.7)),
+      SizedBox(height: 12),
+      Text('خدمة التبرع الإلكتروني غير متاحة حاليًا عبر تطبيق iPhone. يمكن متابعة أخبار الجمعية وأنشطتها من الأقسام الأخرى.',
+        textAlign: TextAlign.center, style: TextStyle(fontSize: 14, height: 1.7)),
+    ],
   );
 }
 
