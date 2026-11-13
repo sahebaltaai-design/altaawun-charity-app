@@ -1,0 +1,275 @@
+name: Publish iOS 1.0.12 (243) account role diagnostic to TestFlight
+
+on:
+  push:
+    branches: [fix/delete-account-diagnostics-291-ios-243]
+    paths:
+      - '.github/workflows/release-ios-243.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-26-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Verify shared account code and iOS simulator
+        run: |
+          flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
+          python3 tool/generate_notification_tones.py
+          flutter pub get
+          flutter analyze --no-fatal-infos --no-fatal-warnings lib/charity_account_page.dart lib/quick_donation_widget.dart lib/main.dart
+          flutter build ios --simulator --debug --no-codesign
+
+  build:
+    needs: verify
+    runs-on: macos-26-intel
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Prepare iOS project
+        run: |
+          flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
+          python3 tool/generate_notification_tones.py
+          flutter pub get
+
+      - name: Generate iOS app icon from charity emblem
+        run: |
+          python3 -m venv "$RUNNER_TEMP/ios-icon-venv"
+          "$RUNNER_TEMP/ios-icon-venv/bin/python" -m pip install Pillow
+          "$RUNNER_TEMP/ios-icon-venv/bin/python" - <<'PY'
+          import json
+          from pathlib import Path
+
+          from PIL import Image
+
+          source = Path('assets/png_style_emblem_the_same_arabic_logo_arched_em.png')
+          emblem = Image.open(source).convert('RGBA')
+          mask = emblem.convert('RGB').convert('L').point(lambda pixel: 255 if pixel > 28 else 0)
+          bounds = mask.getbbox()
+          if bounds:
+              left, top, right, bottom = bounds
+              margin = max(2, int(max(right - left, bottom - top) * .06))
+              emblem = emblem.crop((
+                  max(0, left - margin), max(0, top - margin),
+                  min(emblem.width, right + margin), min(emblem.height, bottom + margin),
+              ))
+
+          catalog = Path('ios/Runner/Assets.xcassets/AppIcon.appiconset')
+          contents_path = catalog / 'Contents.json'
+          contents = json.loads(contents_path.read_text())
+          for entry in contents['images']:
+              width, height = (float(value) for value in entry['size'].split('x'))
+              scale = int(entry.get('scale', '1x').removesuffix('x'))
+              width, height = round(width * scale), round(height * scale)
+              filename = entry.setdefault('filename', f'CharityAppIcon-{width}x{height}.png')
+              icon = Image.new('RGBA', (width, height), (0, 0, 0, 255))
+              artwork = emblem.copy()
+              artwork.thumbnail((int(width * .94), int(height * .86)), Image.Resampling.LANCZOS)
+              icon.alpha_composite(artwork, ((width - artwork.width) // 2, (height - artwork.height) // 2))
+              icon.convert('RGB').save(catalog / filename)
+          contents_path.write_text(json.dumps(contents, indent=2) + '\n')
+          PY
+
+      - name: Configure iOS privacy usage descriptions
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          info_path = Path("ios/Runner/Info.plist")
+          with info_path.open("rb") as f:
+              info = plistlib.load(f)
+          info["NSMicrophoneUsageDescription"] = (
+              "يستخدم التطبيق الميكروفون للاستماع إلى أوامرك الصوتية والبحث بالصوت عند اختيارك هذه الميزة."
+          )
+          info["NSSpeechRecognitionUsageDescription"] = (
+              "يستخدم التطبيق التعرف على الكلام لتحويل أوامرك الصوتية إلى نص لتنفيذ البحث الصوتي."
+          )
+          with info_path.open("wb") as f:
+              plistlib.dump(info, f)
+          for key in ("NSMicrophoneUsageDescription", "NSSpeechRecognitionUsageDescription"):
+              assert info.get(key), f"Missing usage description: {key}"
+          print("iOS microphone and speech recognition purpose strings configured")
+          PY
+
+      - name: Configure iOS push notification entitlements and APNs registration
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          entitlements = Path("ios/Runner/Runner.entitlements")
+          with entitlements.open("wb") as f:
+              plistlib.dump({"aps-environment": "production"}, f)
+          info_path = Path("ios/Runner/Info.plist")
+          with info_path.open("rb") as f:
+              info = plistlib.load(f)
+          info["FirebaseAppDelegateProxyEnabled"] = True
+          info["UIBackgroundModes"] = sorted(set(info.get("UIBackgroundModes", [])) | {"remote-notification"})
+          with info_path.open("wb") as f:
+              plistlib.dump(info, f)
+          PY
+          ruby <<'RUBY'
+          require 'xcodeproj'
+          project = Xcodeproj::Project.open('ios/Runner.xcodeproj')
+          target = project.targets.find { |t| t.name == 'Runner' }
+          abort 'Runner target not found' unless target
+          target.build_configurations.each do |config|
+            config.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'Runner/Runner.entitlements'
+          end
+          project.save
+          RUBY
+          echo "Configured production APNs entitlement and remote notification background mode"
+
+      - name: Ensure native iOS APNs registration
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('ios/Runner/AppDelegate.swift')
+          source = path.read_text()
+          if 'import UserNotifications' not in source:
+              source = source.replace('import UIKit', 'import UIKit\nimport UserNotifications')
+          if 'application.registerForRemoteNotifications()' not in source:
+              source = source.replace(
+                  'GeneratedPluginRegistrant.register(with: self)',
+                  '''GeneratedPluginRegistrant.register(with: self)
+              UNUserNotificationCenter.current().delegate = self
+              application.registerForRemoteNotifications()'''
+              )
+          path.write_text(source)
+          print('Registered iOS application for remote notifications at startup')
+          PY
+
+      - name: Bundle Firebase iOS configuration
+        run: |
+          set -euo pipefail
+          test -f ios/Runner/GoogleService-Info.plist
+          plutil -lint ios/Runner/GoogleService-Info.plist
+          ruby <<'RUBY'
+          require 'xcodeproj'
+          project = Xcodeproj::Project.open('ios/Runner.xcodeproj')
+          runner = project.targets.find { |target| target.name == 'Runner' }
+          abort 'Runner target missing' unless runner
+          group = project.main_group.find_subpath('Runner', false)
+          abort 'Runner group missing' unless group
+          file = group.files.find { |reference| reference.path == 'GoogleService-Info.plist' }
+          file ||= group.new_file('GoogleService-Info.plist')
+          existing = runner.resources_build_phase.files_references
+          runner.resources_build_phase.add_file_reference(file, true) unless existing.include?(file)
+          project.save
+          puts 'Firebase config added to iOS Runner app resources'
+          RUBY
+
+      - name: Install signing credentials
+        env:
+          CERTIFICATE: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/ios-build.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -k "$KEYCHAIN_PATH" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
+          PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print Entitlements:application-identifier' "$RUNNER_TEMP/profile.plist")
+          test "$PROFILE_APP_ID" = "ARR89Z96X6.com.altaawun.charity"
+          cp "$RUNNER_TEMP/profile.mobileprovision" \
+            "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep 'Apple Distribution:'
+
+      - name: Configure Xcode signing and export
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("ios/Runner.xcodeproj/project.pbxproj")
+          content = path.read_text()
+          import re
+          content = re.sub(r'PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;', 'PRODUCT_BUNDLE_IDENTIFIER = com.altaawun.charity;', content)
+          content = re.sub(r'DEVELOPMENT_TEAM\s*=\s*[^;]+;', 'DEVELOPMENT_TEAM = ARR89Z96X6;', content)
+          content = re.sub(r'CODE_SIGN_STYLE\s*=\s*Automatic;', 'CODE_SIGN_STYLE = Manual;', content)
+          # Set signing at the target build-configuration level, preserving unrelated project settings.
+          content = content.replace('PRODUCT_BUNDLE_IDENTIFIER = com.altaawun.charity;', 
+              'PRODUCT_BUNDLE_IDENTIFIER = com.altaawun.charity;\n\t\t\t\tDEVELOPMENT_TEAM = ARR89Z96X6;\n\t\t\t\tCODE_SIGN_STYLE = Manual;\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "' + __import__('os').environ['PROFILE_UUID'] + '";')
+          path.write_text(content)
+          PY
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>ARR89Z96X6</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.altaawun.charity</key><string>${PROFILE_UUID}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -list -project ios/Runner.xcodeproj
+
+      - name: Build signed IPA
+        run: |
+          flutter build ipa --release --build-name=1.0.12 --build-number=243 --export-options-plist=ios/ExportOptions.plist
+
+      - name: Save IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-ios-signed-ipa
+          path: build/ios/ipa/*.ipa
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload to TestFlight
+        env:
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          printf '%s\n' "$APPSTORE_PRIVATE_KEY" > "$HOME/.appstoreconnect/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${APPSTORE_KEY_ID}.p8"
+          IPA_FILE=$(find build/ios/ipa -name '*.ipa' -print -quit)
+          test -n "$IPA_FILE"
+          xcrun altool --upload-app --type ios \
+            --file "$IPA_FILE" \
+            --apiKey "$APPSTORE_KEY_ID" \
+            --apiIssuer "$APPSTORE_ISSUER_ID"
