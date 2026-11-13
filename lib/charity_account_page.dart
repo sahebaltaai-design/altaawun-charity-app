@@ -561,6 +561,60 @@ class _AccountState extends State<CharityAccountPage> {
         style: TextStyle(fontSize: 12, color: Colors.black54),
       ),
     ] else ...[
+      if (mode == 'verify') ...[
+        const Text('تأكيد البريد الإلكتروني',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        Text('أدخل رمز التحقق المرسل إلى: '
+            + (pendingVerificationEmail ?? email.text.trim()),
+          textAlign: TextAlign.center),
+        const SizedBox(height: 6),
+        const Text('الرمز صالح لمدة 10 دقائق. تم حفظ معلومات الاسم والهاتف والعنوان لدى الجمعية حتى تأكيد البريد.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.black54)),
+        const SizedBox(height: 16),
+        TextField(
+          controller: verificationCode,
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          maxLength: 6,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          decoration: const InputDecoration(
+            labelText: 'رمز التأكيد (6 أرقام)',
+            prefixIcon: Icon(Icons.verified_user_outlined),
+            border: OutlineInputBorder(),
+          ),
+        ),
+        if (verificationNotice != null) Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Text(verificationNotice!, textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFF075C39))),
+        ),
+        FilledButton.icon(
+          onPressed: busy ? null : verifyEmail,
+          icon: const Icon(Icons.mark_email_read_outlined),
+          label: const Text('تأكيد البريد وتفعيل الحساب'),
+        ),
+        TextButton(
+          onPressed: busy || resendCountdown > 0 ? null : resendVerificationCode,
+          child: Text(resendCountdown > 0
+              ? 'إعادة إرسال الرمز بعد $resendCountdown ثانية'
+              : 'إعادة إرسال رمز التأكيد'),
+        ),
+        TextButton(
+          onPressed: busy ? null : () async {
+            await storage.delete(key: 'altaawun_pending_verification_email');
+            if (mounted) setState(() {
+              mode = 'register';
+              pendingVerificationEmail = null;
+              verificationNotice = null;
+              error = null;
+            });
+          },
+          child: const Text('استخدام بريد إلكتروني آخر'),
+        ),
+      ] else ...[
       Text(mode == 'register' ? 'إنشاء حساب جديد' : mode == 'forgot' ? 'استعادة كلمة المرور' : 'تسجيل الدخول',
         textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
@@ -629,6 +683,7 @@ class _AccountState extends State<CharityAccountPage> {
       TextButton(onPressed: busy ? null : () => setState(() { mode = mode == 'forgot' ? 'login' : 'forgot'; error = null; }),
         child: Text(mode == 'forgot' ? 'العودة لتسجيل الدخول' : 'نسيت كلمة المرور؟')),
       const Text('يمكنك تصفح التطبيق كزائر دون تسجيل الدخول', textAlign: TextAlign.center),
+      ],
     ],
   ]);
 }
