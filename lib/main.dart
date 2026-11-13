@@ -2358,7 +2358,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             category['id'] as int, (category['name'] ?? '').toString(), 'product_cat'),
         ),
       ),
-      const Padding(padding: EdgeInsets.all(8),
+      Padding(padding: const EdgeInsets.all(8),
         child: Text(defaultTargetPlatform == TargetPlatform.iOS
           ? 'لإتمام التبرع أو الكفالة، يُفتح موقع الجمعية خارج التطبيق. قد تحتاج إلى تسجيل الدخول مرة أخرى.'
           : 'يتم إتمام أي تبرع متاح عبر موقع الجمعية داخل التطبيق، ولا يجمع التطبيق بيانات الدفع مباشرة.',
