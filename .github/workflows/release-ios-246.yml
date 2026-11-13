@@ -5,6 +5,7 @@ on:
     branches: [fix/ios-safari-donation-checkout-246]
     paths:
       - '.github/workflows/release-ios-246.yml'
+      - 'lib/main.dart'
   workflow_dispatch:
 
 permissions:
