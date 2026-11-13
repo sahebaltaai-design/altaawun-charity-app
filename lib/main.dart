@@ -1813,6 +1813,19 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                       ),
                     )),
                     IconButton(
+                      tooltip: 'سلة الكفالات والتبرعات',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 36, minHeight: 42),
+                      onPressed: _openCart,
+                      icon: Badge(
+                        isLabelVisible: _cartCount != null && _cartCount! > 0,
+                        label: Text((_cartCount ?? 0).toString()),
+                        child: const Icon(Icons.shopping_cart_outlined,
+                          color: Color(0xFF075C39)),
+                      ),
+                    ),
+                    IconButton(
                       tooltip: 'الإشعارات',
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(
@@ -2023,6 +2036,26 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
       )),
     ])))),
+    Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: () => go(3),
+          style: FilledButton.styleFrom(
+            backgroundColor: green,
+            foregroundColor: Colors.white,
+            minimumSize: const Size.fromHeight(52),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          icon: const Icon(Icons.volunteer_activism_outlined),
+          label: const Text('تبرع الآن',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ),
+      ),
+    ),
     Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
