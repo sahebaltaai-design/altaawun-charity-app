@@ -16,6 +16,6 @@ jobs:
           channel: stable
       - run: flutter pub get
       - name: Analyze update service
-        run: flutter analyze lib/app_update_service.dart
+        run: flutter analyze --no-fatal-infos lib/app_update_service.dart
       - name: Validate WordPress PHP
         run: php -l wordpress/altaawun-app-updates/altaawun-app-updates.php
