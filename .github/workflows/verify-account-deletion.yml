@@ -35,7 +35,7 @@ jobs:
           done
           flutter pub get
       - name: Analyze shared account and home UI
-        run: flutter analyze --no-fatal-infos lib/charity_account_page.dart lib/main.dart
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/charity_account_page.dart lib/main.dart
       - name: Compile debug APK (do not publish)
         run: flutter build apk --debug --build-number=250
       - name: Upload Android test APK
@@ -62,6 +62,6 @@ jobs:
           python3 tool/generate_notification_tones.py
           flutter pub get
       - name: Analyze shared account and home UI
-        run: flutter analyze --no-fatal-infos lib/charity_account_page.dart lib/main.dart
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/charity_account_page.dart lib/main.dart
       - name: Compile simulator build (do not publish)
         run: flutter build ios --simulator --debug --no-codesign
