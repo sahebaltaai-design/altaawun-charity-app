@@ -348,8 +348,13 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           final bridgeUrl = Uri.tryParse((payload['url'] ?? '').toString());
           if (bridgeUrl != null && bridgeUrl.scheme == 'https' &&
               (bridgeUrl.host == 'www.aytamaliraq.com' || bridgeUrl.host == 'aytamaliraq.com')) {
-            final destinationPath = Uri.parse(destination).path.toLowerCase();
-            _afterSessionBridge = destinationPath.contains('/cart') ? null : destination;
+            final destinationUri = Uri.parse(destination);
+            final destinationPath = destinationUri.path.toLowerCase();
+            // A plain cart opens immediately; an add-to-cart action must run
+            // after the WP login bridge or the chosen sponsorship is lost.
+            _afterSessionBridge =
+                destinationPath.contains('/cart') && destinationUri.query.isEmpty
+                    ? null : destination;
             await controller.loadRequest(bridgeUrl);
             return;
           }
