@@ -90,7 +90,10 @@ class _AccountState extends State<CharityAccountPage> {
         'email_in_use': 'البريد مستخدم مسبقًا',
         'registration_closed': 'التسجيل غير مفعل في إعدادات ووردبريس',
         'rate_limited': 'محاولات كثيرة، حاول لاحقًا',
-        'invalid_fields': 'تأكد من البيانات وكلمة المرور (12 حرفًا على الأقل)',
+        'invalid_fields': 'رفض الموقع بعض بيانات التسجيل. راجع البريد والاسم والعنوان ثم حاول مجددًا.',
+        'invalid_password': 'كلمة المرور يجب أن تتكون من 12 حرفًا على الأقل (وبحد أقصى 256 بايت).',
+        'invalid_email': 'البريد الإلكتروني غير صحيح.',
+        'missing_registration_field': 'يرجى إكمال الحقل الإلزامي في نموذج التسجيل.',
         'session_expired': 'انتهت الجلسة، سجل الدخول مرة أخرى',
         'invalid_current_password': 'كلمة المرور الحالية غير صحيحة',
         'invalid_confirmation': 'لم يتم تأكيد طلب حذف الحساب',
@@ -119,14 +122,15 @@ class _AccountState extends State<CharityAccountPage> {
 
   Future<void> submit() async {
     if (busy) return;
-    if (email.text.trim().isEmpty || (mode != 'forgot' && password.text.isEmpty) ||
-        (mode == 'register' && (
-          firstName.text.trim().isEmpty || lastName.text.trim().isEmpty ||
-          phone.text.trim().isEmpty || country.text.trim().isEmpty ||
-          state.text.trim().isEmpty || city.text.trim().isEmpty ||
-          address.text.trim().isEmpty || password.text.length < 12
-        ))) {
-      setState(() => error = 'أكمل البيانات المطلوبة؛ كلمة مرور التسجيل 12 حرفًا على الأقل');
+    if (mode == 'register') {
+      final problem = _validateRegistration();
+      if (problem != null) {
+        setState(() => error = problem);
+        return;
+      }
+    } else if (email.text.trim().isEmpty ||
+               (mode == 'login' && password.text.isEmpty)) {
+      setState(() => error = 'أدخل البريد الإلكتروني وكلمة المرور.');
       return;
     }
     setState(() { busy = true; error = null; });
@@ -139,8 +143,8 @@ class _AccountState extends State<CharityAccountPage> {
           'name': '${firstName.text.trim()} ${lastName.text.trim()}',
           'billing_first_name': firstName.text.trim(),
           'billing_last_name': lastName.text.trim(),
-          'billing_phone': phone.text.trim(),
-          'billing_country': country.text.trim().toUpperCase(),
+          'billing_phone': _internationalPhone(),
+          'billing_country': _selectedCountry.countryCode,
           'billing_state': state.text.trim(),
           'billing_city': city.text.trim(),
           'billing_address_1': address.text.trim(),
@@ -326,11 +330,32 @@ class _AccountState extends State<CharityAccountPage> {
         TextField(controller: lastName, textCapitalization: TextCapitalization.words,
           decoration: const InputDecoration(labelText: 'اسم العائلة *', border: OutlineInputBorder())),
         const SizedBox(height: 12),
-        TextField(controller: phone, keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(labelText: 'رقم الهاتف *', border: OutlineInputBorder())),
+        InkWell(
+          onTap: _selectCountry,
+          borderRadius: BorderRadius.circular(9),
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'الدولة ومفتاح الاتصال *',
+              border: OutlineInputBorder(),
+              suffixIcon: Icon(Icons.arrow_drop_down),
+            ),
+            child: Text(
+              '${_selectedCountry.flagEmoji} ${_selectedCountry.name} (+${_selectedCountry.phoneCode})',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
         const SizedBox(height: 12),
-        TextField(controller: country, textCapitalization: TextCapitalization.characters,
-          decoration: const InputDecoration(labelText: 'رمز الدولة * (IQ، US...)', border: OutlineInputBorder())),
+        TextField(
+          controller: phone,
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            labelText: 'رقم الهاتف *',
+            prefixText: '+${_selectedCountry.phoneCode}  ',
+            helperText: 'مفتاح الدولة يضاف تلقائيًا؛ يمكنك كتابة الرقم المحلي.',
+            border: const OutlineInputBorder(),
+          ),
+        ),
         const SizedBox(height: 12),
         TextField(controller: state,
           decoration: const InputDecoration(labelText: 'المحافظة / الولاية *', border: OutlineInputBorder())),
