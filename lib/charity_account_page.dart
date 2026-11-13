@@ -290,6 +290,48 @@ class _AccountState extends State<CharityAccountPage> {
     }
   }
 
+  /// All address fields are saved to the same WordPress / WooCommerce member.
+  /// This action is available after OTP verification and on later logins.
+  Future<void> saveProfile() async {
+    if (busy || token == null || user == null) return;
+    if (firstName.text.trim().isEmpty || lastName.text.trim().isEmpty ||
+        state.text.trim().isEmpty || city.text.trim().isEmpty ||
+        address.text.trim().isEmpty ||
+        !RegExp(r'^[+][1-9][0-9]{7,14}$').hasMatch(_internationalPhone())) {
+      setState(() => error = 'أكمل الاسم ورقم الهاتف والمحافظة والمدينة والعنوان الصحيح.');
+      return;
+    }
+    setState(() { busy = true; error = null; });
+    try {
+      final data = await api('profile', bearer: token, body: {
+        'billing_first_name': firstName.text.trim(),
+        'billing_last_name': lastName.text.trim(),
+        'billing_country': _selectedCountry.countryCode,
+        'billing_phone': _internationalPhone(),
+        'billing_state': state.text.trim(),
+        'billing_city': city.text.trim(),
+        'billing_address_1': address.text.trim(),
+        'billing_address_2': address2.text.trim(),
+        'billing_postcode': postcode.text.trim(),
+      });
+      if (data['user'] is! Map) throw Exception('لم يتم تأكيد حفظ البيانات على الموقع.');
+      final updated = Map<String, dynamic>.from(data['user'] as Map);
+      if (!mounted) return;
+      _fillMemberFields(updated);
+      setState(() {
+        user = updated;
+        editingProfile = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم حفظ بياناتك وعنوانك في موقع الجمعية بنجاح.')),
+      );
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> submit() async {
     if (busy) return;
     if (mode == 'verify') { await verifyEmail(); return; }
@@ -518,7 +560,74 @@ class _AccountState extends State<CharityAccountPage> {
     if (error != null) Padding(padding: const EdgeInsets.all(12), child: Text(error!,
       textAlign: TextAlign.center, style: const TextStyle(color: Colors.deepOrange))),
     if (user != null) ...[
-      Card(child: ListTile(title: const Text('البريد الإلكتروني'), subtitle: Text(user!['email']?.toString() ?? ''))),
+      Card(child: ListTile(title: const Text('البريد الإلكتروني'),
+        subtitle: Text(user!['email']?.toString() ?? ''))),
+      Card(child: ListTile(
+        leading: const Icon(Icons.location_on_outlined, color: Color(0xFF075C39)),
+        title: const Text('معلوماتي وعنوان الفاتورة'),
+        subtitle: Text([
+          (user!['billing_phone'] ?? '').toString(),
+          (user!['billing_address_1'] ?? '').toString(),
+          (user!['billing_city'] ?? '').toString(),
+          (user!['billing_state'] ?? '').toString(),
+          (user!['billing_country'] ?? '').toString(),
+        ].where((entry) => entry.isNotEmpty).join('، ')),
+      )),
+      OutlinedButton.icon(
+        onPressed: busy ? null : () => setState(() {
+          _fillMemberFields(user!);
+          editingProfile = !editingProfile;
+          error = null;
+        }),
+        icon: const Icon(Icons.edit_outlined),
+        label: Text(editingProfile ? 'إغلاق تعديل البيانات' : 'تعديل بياناتي والعنوان'),
+      ),
+      if (editingProfile) ...[
+        const SizedBox(height: 12),
+        const Text('يمكنك تصحيح عنوانك أو رقمك بعد تأكيد البريد، وتُحفظ التغييرات في WooCommerce.',
+          textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        TextField(controller: firstName,
+          decoration: const InputDecoration(labelText: 'الاسم الأول *', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: lastName,
+          decoration: const InputDecoration(labelText: 'اسم العائلة *', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        InkWell(
+          onTap: _selectCountry,
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              labelText: 'الدولة ومفتاح الاتصال *',
+              border: OutlineInputBorder(),
+              suffixIcon: Icon(Icons.arrow_drop_down)),
+            child: Text('${_selectedCountry.flagEmoji} ${_selectedCountry.name} (+${_selectedCountry.phoneCode})'),
+          ),
+        ),
+        const SizedBox(height: 10),
+        TextField(controller: phone, keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(labelText: 'رقم الهاتف *', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: state,
+          decoration: const InputDecoration(labelText: 'المحافظة / الولاية *', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: city,
+          decoration: const InputDecoration(labelText: 'المدينة *', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: address,
+          decoration: const InputDecoration(labelText: 'العنوان *', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: address2,
+          decoration: const InputDecoration(labelText: 'عنوان إضافي (اختياري)', border: OutlineInputBorder())),
+        const SizedBox(height: 10),
+        TextField(controller: postcode,
+          decoration: const InputDecoration(labelText: 'الرمز البريدي (اختياري)', border: OutlineInputBorder())),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: busy ? null : saveProfile,
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('حفظ البيانات والعنوان'),
+        ),
+      ],
       const SizedBox(height: 16),
       const Text('كفالاتي في السلة', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       Card(child: ListTile(
