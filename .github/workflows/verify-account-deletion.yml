@@ -1,10 +1,11 @@
-name: Validate account deletion on Android and iOS
+name: Validate Android and iOS cart, donation and account UI
 
 on:
   push:
     branches: [fix/apple-account-deletion]
     paths:
       - 'lib/charity_account_page.dart'
+      - 'lib/main.dart'
       - 'pubspec.yaml'
       - '.github/workflows/verify-account-deletion.yml'
   workflow_dispatch:
@@ -33,15 +34,15 @@ jobs:
             cp "assets/tones/${tone}.wav" "android/app/src/main/res/raw/altaawun_${tone}.wav"
           done
           flutter pub get
-      - name: Analyze shared account page
-        run: flutter analyze --no-fatal-infos lib/charity_account_page.dart
+      - name: Analyze shared account and home UI
+        run: flutter analyze --no-fatal-infos lib/charity_account_page.dart lib/main.dart
       - name: Compile debug APK (do not publish)
-        run: flutter build apk --debug --build-number=235
+        run: flutter build apk --debug --build-number=250
       - name: Upload Android test APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: altaawun-android-test-1.0.4-235
+          name: altaawun-android-test-1.0.5-250
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -60,7 +61,7 @@ jobs:
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
           python3 tool/generate_notification_tones.py
           flutter pub get
-      - name: Analyze shared account page
-        run: flutter analyze --no-fatal-infos lib/charity_account_page.dart
+      - name: Analyze shared account and home UI
+        run: flutter analyze --no-fatal-infos lib/charity_account_page.dart lib/main.dart
       - name: Compile simulator build (do not publish)
         run: flutter build ios --simulator --debug --no-codesign
