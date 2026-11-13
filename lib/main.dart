@@ -16,7 +16,38 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+// Apple Guideline 3.2.2(iv): donations on iOS complete outside the app.
+bool _isCharityCheckoutUri(Uri uri) {
+  final host = uri.host.toLowerCase();
+  if (uri.scheme != 'https' ||
+      (host != 'aytamaliraq.com' && host != 'www.aytamaliraq.com')) return false;
+  final path = uri.path.toLowerCase();
+  return path.contains('/cart') || path.contains('/checkout') ||
+      path.contains('/order-pay') || path.contains('/order-received') ||
+      uri.queryParameters.containsKey('add-to-cart') ||
+      uri.queryParameters.containsKey('altaawun_qd');
+}
+
+Future<void> _openDonationInExternalBrowser(BuildContext context, String url) async {
+  final uri = Uri.tryParse(url);
+  final host = uri?.host.toLowerCase();
+  if (uri == null || uri.scheme != 'https' ||
+      (host != 'aytamaliraq.com' && host != 'www.aytamaliraq.com')) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('رابط التبرع غير صالح.')));
+    return;
+  }
+  try {
+    if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+  } catch (error) {
+    debugPrint('Could not open external donation browser: $error');
+  }
+  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('تعذر فتح المتصفح. يرجى المحاولة مرة أخرى.')));
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -230,13 +261,21 @@ class ProductDetailScreen extends StatelessWidget {
         ],
         const SizedBox(height: 26),
         FilledButton.icon(
-          onPressed: validLink ? () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => DonationWebScreen(url: link))) : null,
+          onPressed: validLink ? () {
+            if (defaultTargetPlatform == TargetPlatform.iOS) {
+              _openDonationInExternalBrowser(context, link);
+            } else {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => DonationWebScreen(url: link)));
+            }
+          } : null,
           icon: const Icon(Icons.volunteer_activism),
           label: const Text('تبرع الآن'),
         ),
         const SizedBox(height: 8),
-        const Text('يتم إكمال التبرع عبر صفحة المنتج الآمنة على موقع الجمعية داخل التطبيق.',
+        Text(defaultTargetPlatform == TargetPlatform.iOS
+            ? 'يُفتح موقع الجمعية خارج التطبيق لإتمام التبرع. قد تحتاج إلى تسجيل الدخول في الموقع.'
+            : 'يتم إكمال التبرع عبر صفحة المنتج الآمنة على موقع الجمعية داخل التطبيق.',
           textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
       ]),
     );
@@ -388,6 +427,10 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           if (initial == null) return NavigationDecision.prevent;
           final host = uri.host.toLowerCase();
           final sameSite = host == 'aytamaliraq.com' || host == 'www.aytamaliraq.com';
+          if (defaultTargetPlatform == TargetPlatform.iOS && _isCharityCheckoutUri(uri)) {
+            await _openDonationInExternalBrowser(context, request.url);
+            return NavigationDecision.prevent;
+          }
           if (!sameSite) {
             // External payment providers may be needed after the user begins checkout.
             final current = await controller.currentUrl();
@@ -934,6 +977,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     final uri = Uri.tryParse(url);
     if (uri != null && (uri.path.toLowerCase().contains('/cart') ||
         uri.path.toLowerCase().contains('/checkout') ||
+        uri.path.toLowerCase().contains('/order-pay') ||
         uri.queryParameters.containsKey('add-to-cart'))) {
       _openProtectedCheckout(url);
       return;
@@ -963,6 +1007,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     final uri = original.replace(scheme: 'https', queryParameters: cleanParams.isEmpty ? null : cleanParams);
     if (isCharitySite && (uri.path.toLowerCase().contains('/cart') ||
         uri.path.toLowerCase().contains('/checkout') ||
+        uri.path.toLowerCase().contains('/order-pay') ||
         uri.queryParameters.containsKey('add-to-cart'))) {
       await _openProtectedCheckout(uri.toString());
       return;
@@ -1294,7 +1339,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Widget _inAppCheckout() => Column(children: [
     TextButton.icon(onPressed: () => setState(() => checkoutUrl = null),
       icon: const Icon(Icons.arrow_forward), label: const Text('العودة إلى التطبيق')),
-    Expanded(child: _CheckoutContent(key: ValueKey('$checkoutUrl/$_isSlideDestination'), url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', allowSiteNavigation: _isSlideDestination, onPageNotFound: () {
+    Expanded(child: defaultTargetPlatform == TargetPlatform.iOS && !_isSlideDestination
+      ? const Center(child: Text('إتمام التبرعات متاح عبر المتصفح الخارجي.'))
+      : _CheckoutContent(key: ValueKey('$checkoutUrl/$_isSlideDestination'), url: checkoutUrl ?? 'https://www.aytamaliraq.com/cart/', allowSiteNavigation: _isSlideDestination, onPageNotFound: () {
       if (!mounted || !_isSlideDestination) return;
       setState(() { checkoutUrl = null; _isSlideDestination = false; });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر العثور على الصفحة أو الخبر')));
@@ -1819,6 +1866,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     final isSignedQuickDonation = parsed != null &&
         parsed.queryParameters.containsKey('altaawun_qd') &&
         parsed.queryParameters.containsKey('qd_sig');
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await _openDonationInExternalBrowser(context, url);
+      return;
+    }
     if (!isSignedQuickDonation && !await _ensureMemberForCheckout()) return;
     if (!mounted) return;
     setState(() {
@@ -2031,9 +2082,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
       _inAppCheckout(),
       ]),
-      // Separate same-origin cart reader: initialise the badge when the app starts,
-      // even if the customer has not opened the visible WooCommerce checkout.
-      Offstage(
+      // The in-app WooCommerce cart is Android-only.
+      if (defaultTargetPlatform != TargetPlatform.iOS) Offstage(
         offstage: true,
         child: SizedBox(width: 1, height: 1,
           child: _CheckoutContent(
@@ -2308,8 +2358,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             category['id'] as int, (category['name'] ?? '').toString(), 'product_cat'),
         ),
       ),
-      const Padding(padding: EdgeInsets.all(8),
-        child: Text('يتم إتمام أي تبرع متاح عبر موقع الجمعية داخل التطبيق، ولا يجمع التطبيق بيانات الدفع مباشرة.',
+      Padding(padding: const EdgeInsets.all(8),
+        child: Text(defaultTargetPlatform == TargetPlatform.iOS
+          ? 'لإتمام التبرع أو الكفالة، يُفتح موقع الجمعية خارج التطبيق. قد تحتاج إلى تسجيل الدخول مرة أخرى.'
+          : 'يتم إتمام أي تبرع متاح عبر موقع الجمعية داخل التطبيق، ولا يجمع التطبيق بيانات الدفع مباشرة.',
           textAlign: TextAlign.center, style: TextStyle(fontSize: 12))),
     ]);
   }
