@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:country_picker/country_picker.dart';
 import 'package:http/http.dart' as http;
@@ -16,6 +18,7 @@ class _AccountState extends State<CharityAccountPage> {
   static const base = 'https://www.aytamaliraq.com/wp-json/altaawun-app/v1/';
   static const storage = FlutterSecureStorage();
   final email = TextEditingController();
+  final verificationCode = TextEditingController();
   final password = TextEditingController();
   final firstName = TextEditingController();
   final lastName = TextEditingController();
@@ -33,6 +36,41 @@ class _AccountState extends State<CharityAccountPage> {
   bool busy = false;
   String? deletionStatus;
   bool? deletionAllowed;
+  String? pendingVerificationEmail;
+  int resendCountdown = 0;
+  Timer? _resendTicker;
+  String? verificationNotice;
+  bool editingProfile = false;
+
+  void _beginResendCountdown(int seconds) {
+    _resendTicker?.cancel();
+    if (!mounted) return;
+    setState(() => resendCountdown = seconds > 0 ? seconds : 0);
+    if (seconds <= 0) return;
+    _resendTicker = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) { timer.cancel(); return; }
+      if (resendCountdown <= 1) {
+        timer.cancel();
+        setState(() => resendCountdown = 0);
+      } else {
+        setState(() => resendCountdown--);
+      }
+    });
+  }
+
+  void _fillMemberFields(Map<String, dynamic> data) {
+    firstName.text = (data['billing_first_name'] ?? '').toString();
+    lastName.text = (data['billing_last_name'] ?? '').toString();
+    phone.text = (data['billing_phone'] ?? '').toString();
+    state.text = (data['billing_state'] ?? '').toString();
+    city.text = (data['billing_city'] ?? '').toString();
+    address.text = (data['billing_address_1'] ?? '').toString();
+    address2.text = (data['billing_address_2'] ?? '').toString();
+    postcode.text = (data['billing_postcode'] ?? '').toString();
+    final iso = (data['billing_country'] ?? '').toString();
+    final selected = CountryService().findByCode(iso);
+    if (selected != null) _selectedCountry = selected;
+  }
 
   @override
   void initState() {
@@ -82,8 +120,9 @@ class _AccountState extends State<CharityAccountPage> {
   }
   @override
   void dispose() {
+    _resendTicker?.cancel();
     for (final controller in [
-      email, password, firstName, lastName, phone,
+      email, password, verificationCode, firstName, lastName, phone,
       state, city, address, address2, postcode,
     ]) {
       controller.dispose();
@@ -100,7 +139,9 @@ class _AccountState extends State<CharityAccountPage> {
     // Registration and account deletion use dedicated v2 routes to avoid
     // collisions with legacy WordPress callbacks. Neither accepts a role
     // or user ID from the app.
-    final uri = (path == 'register' || path == 'delete-account' || path == 'account-status')
+    final uri = (path == 'register' || path == 'register-start' ||
+        path == 'register-verify' || path == 'register-resend' ||
+        path == 'delete-account' || path == 'account-status')
         ? Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun-app/v2/$path')
         : Uri.parse(base + path);
     final response = await (body == null
@@ -118,6 +159,12 @@ class _AccountState extends State<CharityAccountPage> {
         'invalid_fields': 'رفض الموقع بعض بيانات التسجيل. راجع البريد والاسم والعنوان ثم حاول مجددًا.',
         'invalid_password': 'كلمة المرور يجب أن تتكون من 12 حرفًا على الأقل (وبحد أقصى 256 بايت).',
         'invalid_email': 'البريد الإلكتروني غير صحيح.',
+        'email_unverified': 'يجب تأكيد البريد الإلكتروني قبل تسجيل الدخول.',
+        'invalid_code': 'رمز التأكيد غير صحيح. تأكد من الأرقام الستة.',
+        'code_expired': 'انتهت صلاحية الرمز. اضغط إعادة إرسال الرمز.',
+        'otp_attempts_exceeded': 'محاولات كثيرة للرمز. اطلب رمزًا جديدًا.',
+        'otp_cooldown': 'انتظر دقيقة قبل طلب رمز جديد.',
+        'email_delivery_failed': 'تعذر إرسال البريد من الموقع. تحقق من إعدادات بريد الجمعية.',
         'missing_registration_field': 'يرجى إكمال بيانات التسجيل المطلوبة.',
         'session_expired': 'انتهت الجلسة، سجل الدخول مرة أخرى',
         'invalid_current_password': 'كلمة المرور الحالية غير صحيحة',
