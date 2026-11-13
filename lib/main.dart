@@ -926,6 +926,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   void _openNotificationUrl(String url) {
     if (!_validNewsUrl(url) || !mounted) return;
+    final uri = Uri.tryParse(url);
+    if (uri != null && (uri.path.toLowerCase().contains('/cart') ||
+        uri.path.toLowerCase().contains('/checkout') ||
+        uri.queryParameters.containsKey('add-to-cart'))) {
+      _openProtectedCheckout(url);
+      return;
+    }
     setState(() {
       checkoutUrl = url;
       selectedItem = null;
@@ -949,6 +956,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     final cleanParams = Map<String, String>.from(original.queryParameters)
       ..remove('preview') ..remove('preview_id') ..remove('preview_nonce');
     final uri = original.replace(scheme: 'https', queryParameters: cleanParams.isEmpty ? null : cleanParams);
+    if (isCharitySite && (uri.path.toLowerCase().contains('/cart') ||
+        uri.path.toLowerCase().contains('/checkout') ||
+        uri.queryParameters.containsKey('add-to-cart'))) {
+      await _openProtectedCheckout(uri.toString());
+      return;
+    }
     if (!isCharitySite) {
       setState(() { selectedItem = null; wpSelectedCategory = null; checkoutUrl = uri.toString(); _isSlideDestination = true; });
       return;
