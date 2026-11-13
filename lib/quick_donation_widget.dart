@@ -36,6 +36,20 @@ class _AltaawunQuickDonationState extends State<AltaawunQuickDonation> {
   int _usdMaximum = 0;
   double _usdRate = 0;
   String _rateSource = '';
+  int _usdRateUpdatedAt = 0;
+
+  // WordPress supplies the timestamp of the last accepted exchange rate as
+  // Unix seconds. Baghdad observes UTC+03:00 year-round; do not display the
+  // device clock or last API fetch time as if they were rate updates.
+  String? get _rateUpdatedInBaghdad {
+    if (_usdRateUpdatedAt <= 0) return null;
+    final date = DateTime.fromMillisecondsSinceEpoch(
+      _usdRateUpdatedAt * 1000, isUtc: true,
+    ).add(const Duration(hours: 3));
+    final d = (int n) => n.toString().padLeft(2, '0');
+    return '${date.year}/${d(date.month)}/${d(date.day)} — '
+        '${d(date.hour)}:${d(date.minute)} (بتوقيت العراق)';
+  }
   final Map<String, String> _categories = {};
   final Map<String, String> _methods = {};
   List<int> _iqdAmounts = const [5000, 10000, 25000, 50000, 100000];
@@ -108,6 +122,7 @@ class _AltaawunQuickDonationState extends State<AltaawunQuickDonation> {
         _usdAvailable = usdAvailable;
         _usdRate = usdRate;
         _rateSource = (raw['usd_rate_source'] ?? '').toString();
+        _usdRateUpdatedAt = _int(raw['usd_rate_updated_at']);
         if (!usdAvailable && _currency == 'USD') _currency = 'IQD';
         if (iqd.isNotEmpty) _iqdAmounts = iqd;
         if (usd.isNotEmpty) _usdAmounts = usd;
@@ -260,10 +275,30 @@ class _AltaawunQuickDonationState extends State<AltaawunQuickDonation> {
             ),
             if (_currency == 'USD' && _usdAvailable) Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: Text('المقابل التقريبي: $equivalent دينار عراقي — '
-                  'سعر الصرف المعتمد: $_usdRate د.ع/دولار '
-                  '(${_rateSource == 'cbi_auto' ? 'البنك المركزي العراقي' : 'سعر احتياطي معتمد'}). '
-                  'يتحقق الخادم من السعر قبل الدفع.')),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('المقابل التقريبي: $equivalent دينار عراقي — '
+                      'سعر الصرف المعتمد: $_usdRate د.ع/دولار '
+                      '(${_rateSource == 'cbi_auto' ? 'البنك المركزي العراقي' : 'سعر احتياطي معتمد'}). '
+                      'يتحقق الخادم من السعر قبل الدفع.'),
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.access_time_outlined, size: 18, color: _green),
+                      const SizedBox(width: 6),
+                      Expanded(child: Text(
+                        _rateUpdatedInBaghdad == null
+                            ? 'وقت آخر تحديث لسعر الصرف غير متاح'
+                            : 'آخر تحديث لسعر الصرف: $_rateUpdatedInBaghdad',
+                        style: const TextStyle(color: _green, fontSize: 13),
+                      )),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
               value: _payment,
