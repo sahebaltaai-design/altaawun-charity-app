@@ -93,7 +93,11 @@ class _AccountState extends State<CharityAccountPage> {
     final headers = <String, String>{'Accept': 'application/json'};
     if (body != null) headers['Content-Type'] = 'application/json';
     if (bearer != null) headers['Authorization'] = 'Bearer ' + bearer;
-    final uri = Uri.parse(base + path);
+    // The v1 register route is shadowed by an older WordPress integration.
+    // v2 uses a dedicated endpoint published by auth plugin 1.1.11.
+    final uri = path == 'register'
+        ? Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun-app/v2/register')
+        : Uri.parse(base + path);
     final response = await (body == null
       ? http.get(uri, headers: headers)
       : http.post(uri, headers: headers, body: jsonEncode(body))).timeout(const Duration(seconds: 20));
@@ -104,11 +108,12 @@ class _AccountState extends State<CharityAccountPage> {
         'invalid_credentials': 'البريد أو كلمة المرور غير صحيحة',
         'email_in_use': 'البريد مستخدم مسبقًا',
         'registration_closed': 'التسجيل غير مفعل في إعدادات ووردبريس',
+        'rest_no_route': 'خدمة إنشاء الحساب الجديدة غير مفعّلة. حدّث إضافة Altaawun App Authentication إلى الإصدار 1.1.11 في WordPress.',
         'rate_limited': 'محاولات كثيرة، حاول لاحقًا',
         'invalid_fields': 'رفض الموقع بعض بيانات التسجيل. راجع البريد والاسم والعنوان ثم حاول مجددًا.',
         'invalid_password': 'كلمة المرور يجب أن تتكون من 12 حرفًا على الأقل (وبحد أقصى 256 بايت).',
         'invalid_email': 'البريد الإلكتروني غير صحيح.',
-        'missing_registration_field': 'يرجى إكمال الحقل الإلزامي في نموذج التسجيل.',
+        'missing_registration_field': 'يرجى إكمال بيانات التسجيل المطلوبة.',
         'session_expired': 'انتهت الجلسة، سجل الدخول مرة أخرى',
         'invalid_current_password': 'كلمة المرور الحالية غير صحيحة',
         'invalid_confirmation': 'لم يتم تأكيد طلب حذف الحساب',
@@ -117,7 +122,23 @@ class _AccountState extends State<CharityAccountPage> {
         'invalid_phone': 'أدخل رقم هاتف صحيحًا',
         'invalid_country': 'اختر رمز دولة صحيحًا مثل IQ أو US',
       };
-      throw Exception(messages[code] ?? 'فشل الاتصال: ' + response.statusCode.toString());
+      // Preserve the rejected field name without exposing private input values.
+      final details = decoded is Map && decoded['data'] is Map
+          ? decoded['data'] as Map : const {};
+      final field = (details['field'] ?? '').toString();
+      const fieldLabels = {
+        'name': 'الاسم',
+        'billing_first_name': 'الاسم الأول',
+        'billing_last_name': 'اسم العائلة',
+        'billing_country': 'الدولة',
+        'billing_phone': 'رقم الهاتف',
+        'billing_state': 'المحافظة أو الولاية',
+        'billing_city': 'المدينة',
+        'billing_address_1': 'العنوان',
+      };
+      final fieldHint = fieldLabels[field];
+      final problem = messages[code] ?? 'فشل الاتصال: ${response.statusCode}';
+      throw Exception(fieldHint == null ? problem : '$problem الحقل المطلوب: $fieldHint');
     }
     if (decoded is! Map) throw Exception('استجابة غير متوقعة');
     return Map<String, dynamic>.from(decoded);
