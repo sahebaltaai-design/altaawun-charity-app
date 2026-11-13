@@ -327,9 +327,12 @@ class _CheckoutContent extends StatefulWidget {
 class _CheckoutContentState extends State<_CheckoutContent> {
   late final WebViewController controller;
   bool _errorReported = false;
+  String? _afterSessionBridge;
   static const _authStorage = FlutterSecureStorage();
   Future<void> _loadCheckoutWithAccount(String destination) async {
-    if (widget.allowSiteNavigation || !(Uri.tryParse(destination)?.path.toLowerCase().contains('/cart') ?? false)) {
+    // Every in-app cart and checkout is connected to the authenticated
+    // WordPress user before it opens; a mobile token alone is not a WP cookie.
+    if (widget.allowSiteNavigation) {
       await controller.loadRequest(Uri.parse(destination));
       return;
     }
@@ -345,6 +348,8 @@ class _CheckoutContentState extends State<_CheckoutContent> {
           final bridgeUrl = Uri.tryParse((payload['url'] ?? '').toString());
           if (bridgeUrl != null && bridgeUrl.scheme == 'https' &&
               (bridgeUrl.host == 'www.aytamaliraq.com' || bridgeUrl.host == 'aytamaliraq.com')) {
+            final destinationPath = Uri.parse(destination).path.toLowerCase();
+            _afterSessionBridge = destinationPath.contains('/cart') ? null : destination;
             await controller.loadRequest(bridgeUrl);
             return;
           }
@@ -410,6 +415,13 @@ class _CheckoutContentState extends State<_CheckoutContent> {
         },
         onPageFinished: (url) {
           final uri = Uri.tryParse(url);
+          if (_afterSessionBridge != null &&
+              uri != null && uri.path.toLowerCase().contains('/cart')) {
+            final nextUrl = _afterSessionBridge!;
+            _afterSessionBridge = null;
+            controller.loadRequest(Uri.parse(nextUrl));
+            return;
+          }
           if (uri != null && (uri.host == 'www.aytamaliraq.com' || uri.host == 'aytamaliraq.com')) {
             if (widget.allowSiteNavigation) {
               controller.runJavaScript(_slideDetailDisplayScript);
@@ -419,8 +431,8 @@ class _CheckoutContentState extends State<_CheckoutContent> {
             }
           }
         },
-      ))
-      ..loadRequest(Uri.parse(widget.url));
+      ));
+    _loadCheckoutWithAccount(widget.url);
   }
   // Remove unrelated site chrome only while the embedded cart/checkout is open.
   // Keep WooCommerce forms, payment gateways, and order details untouched.
