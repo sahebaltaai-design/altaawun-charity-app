@@ -198,18 +198,101 @@ class _AccountState extends State<CharityAccountPage> {
 
   Future<void> restore() async {
     final saved = await storage.read(key: 'altaawun_token');
-    if (saved == null || !mounted) return;
+    if (saved == null) {
+      final pending = await storage.read(key: 'altaawun_pending_verification_email');
+      if (mounted && pending != null && pending.isNotEmpty) {
+        setState(() {
+          pendingVerificationEmail = pending;
+          email.text = pending;
+          mode = 'verify';
+          verificationNotice = 'أدخل الرمز المرسل إلى بريدك الإلكتروني لإكمال التسجيل.';
+        });
+      }
+      return;
+    }
+    if (!mounted) return;
     setState(() => busy = true);
     try {
       final result = await api('me', bearer: saved);
-      if (mounted) setState(() { token = saved; user = Map<String, dynamic>.from(result['user'] as Map); });
+      if (mounted) {
+        final profile = Map<String, dynamic>.from(result['user'] as Map);
+        _fillMemberFields(profile);
+        setState(() { token = saved; user = profile; });
+      }
       await loadOrders();
     } catch (_) { await storage.delete(key: 'altaawun_token'); }
     finally { if (mounted) setState(() => busy = false); }
   }
 
+  Future<void> _completeLogin(Map<String, dynamic> result) async {
+    final received = result['token']?.toString();
+    if (received == null || received.isEmpty || result['user'] is! Map) {
+      throw Exception('لم يُنشئ الموقع جلسة دخول صالحة.');
+    }
+    final profile = Map<String, dynamic>.from(result['user'] as Map);
+    await storage.write(key: 'altaawun_token', value: received);
+    await storage.delete(key: 'altaawun_pending_verification_email');
+    _resendTicker?.cancel();
+    password.clear();
+    verificationCode.clear();
+    if (!mounted) return;
+    _fillMemberFields(profile);
+    setState(() {
+      token = received;
+      user = profile;
+      mode = 'login';
+      pendingVerificationEmail = null;
+      verificationNotice = null;
+      resendCountdown = 0;
+      editingProfile = false;
+    });
+    await loadOrders();
+  }
+
+  Future<void> verifyEmail() async {
+    if (busy || mode != 'verify') return;
+    final pending = pendingVerificationEmail ?? email.text.trim();
+    final entered = verificationCode.text.trim();
+    if (!RegExp(r'^[0-9]{6}$').hasMatch(entered)) {
+      setState(() => error = 'أدخل رمز التأكيد المكون من 6 أرقام.');
+      return;
+    }
+    setState(() { busy = true; error = null; });
+    try {
+      final result = await api('register-verify',
+        body: {'email': pending, 'code': entered});
+      if (result['verified'] != true) throw Exception('لم يؤكد الموقع البريد الإلكتروني.');
+      await _completeLogin(result);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم تأكيد البريد الإلكتروني وتفعيل الحساب بنجاح.')));
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> resendVerificationCode() async {
+    if (busy || mode != 'verify' || resendCountdown > 0) return;
+    final pending = pendingVerificationEmail ?? email.text.trim();
+    if (pending.isEmpty) return;
+    setState(() { busy = true; error = null; });
+    try {
+      await api('register-resend', body: {'email': pending});
+      if (!mounted) return;
+      setState(() => verificationNotice =
+        'إذا كان الحساب بانتظار التحقق، أرسل الموقع رمزًا جديدًا. تحقق من البريد الوارد والرسائل غير المرغوب فيها.');
+      _beginResendCountdown(60);
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> submit() async {
     if (busy) return;
+    if (mode == 'verify') { await verifyEmail(); return; }
     if (mode == 'register') {
       final problem = _validateRegistration();
       if (problem != null) {
@@ -239,18 +322,31 @@ class _AccountState extends State<CharityAccountPage> {
           'billing_address_2': address2.text.trim(),
           'billing_postcode': postcode.text.trim(),
         } : {'login': email.text.trim(), 'password': password.text};
-      final result = await api(current == 'forgot' ? 'forgot-password' : current, body: fields);
+      final result = await api(current == 'forgot' ? 'forgot-password' :
+        current == 'register' ? 'register-start' : current, body: fields);
       if (!mounted) return;
       if (current == 'forgot') {
         setState(() { mode = 'login'; error = 'إذا كان البريد مسجلًا، ستصلك رسالة الاستعادة'; });
-      } else {
-        final received = result['token']?.toString();
-        if (received == null || received.isEmpty || result['user'] is! Map) throw Exception('جلسة غير صالحة');
-        await storage.write(key: 'altaawun_token', value: received);
+      } else if (current == 'register') {
+        if (result['verification_required'] != true) {
+          throw Exception('لم يطلب الموقع تأكيد البريد. تأكد من تحديث إضافة الحسابات إلى 1.1.14.');
+        }
+        final pending = (result['email'] ?? email.text.trim()).toString();
+        await storage.write(key: 'altaawun_pending_verification_email', value: pending);
+        verificationCode.clear();
         password.clear();
         if (!mounted) return;
-        setState(() { token = received; user = Map<String, dynamic>.from(result['user'] as Map); });
-        await loadOrders();
+        setState(() {
+          mode = 'verify';
+          pendingVerificationEmail = pending;
+          verificationNotice = result['email_sent'] == false
+              ? 'لم يستطع الموقع إرسال رسالة التحقق. تحقق من بريد WordPress (SMTP)، ثم اضغط إعادة إرسال الرمز.'
+              : 'أرسلنا رمزًا من 6 أرقام إلى بريدك. الرمز صالح لمدة 10 دقائق. جميع بياناتك وعنوانك محفوظة بانتظار التأكيد.';
+        });
+        _beginResendCountdown(result['email_sent'] == false
+            ? 0 : ((result['resend_after_seconds'] as num?)?.toInt() ?? 60));
+      } else {
+        await _completeLogin(result);
       }
     } catch (e) {
       if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
