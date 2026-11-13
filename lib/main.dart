@@ -1244,7 +1244,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         final path = uri.path.toLowerCase();
         final isDonation = path.contains('/checkout') || path.contains('/cart') ||
             path.contains('/order-pay') || uri.queryParameters.containsKey('add-to-cart');
-        if (isDonation) setState(() => checkoutUrl = url);
+        if (isDonation) _openProtectedCheckout(url);
       })),
       if (isProduct) FilledButton.icon(
         onPressed: valid ? () {
@@ -1255,7 +1255,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           final target = productId != null && productId > 0 && productType == 'simple'
               ? 'https://www.aytamaliraq.com/cart/?add-to-cart=$productId'
               : link;
-          setState(() => checkoutUrl = target);
+          _openProtectedCheckout(target);
         } : null,
         icon: const Icon(Icons.shopping_cart_outlined), label: const Text('اختيار الكفالة وإضافتها للسلة')),
     ]);
@@ -1751,7 +1751,49 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     ));
   }
 
-  void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
+  static const _memberStorage = FlutterSecureStorage();
+
+  Future<bool> _ensureMemberForCheckout() async {
+    final saved = await _memberStorage.read(key: 'altaawun_token');
+    if (saved != null && saved.isNotEmpty) {
+      try {
+        final response = await http.get(
+          Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun-app/v1/me'),
+          headers: {'Authorization': 'Bearer $saved', 'Accept': 'application/json'},
+        ).timeout(const Duration(seconds: 15));
+        if (response.statusCode == 200) return true;
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          await _memberStorage.delete(key: 'altaawun_token');
+        }
+      } catch (_) {
+        if (!mounted) return false;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('تعذر التحقق من تسجيل الدخول. تحقق من الإنترنت وحاول مجددًا.'),
+        ));
+        return false;
+      }
+    }
+    if (!mounted) return false;
+    go(7);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('لإتمام الكفالة أو التبرع، سجّل دخولك أو أنشئ حسابًا أولًا.'),
+      duration: Duration(seconds: 5),
+    ));
+    return false;
+  }
+
+  Future<void> _openProtectedCheckout(String url) async {
+    if (!await _ensureMemberForCheckout() || !mounted) return;
+    setState(() {
+      checkoutUrl = url;
+      _isSlideDestination = false;
+      _cartRefreshKey++;
+    });
+  }
+
+  void _openCart() {
+    _openProtectedCheckout('https://www.aytamaliraq.com/cart/');
+  }
 
   void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; _isSlideDestination = false; });
   @override
@@ -1887,7 +1929,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         FittedBox(fit: BoxFit.scaleDown, child: Text('مدرسة الأيتام وكفالتهم',
           maxLines: 1, style: TextStyle(fontSize: 12))),
       ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-      actions: [IconButton(
+      actions: [if (page == 7) IconButton(
+        tooltip: 'الإعدادات',
+        icon: const Icon(Icons.settings_outlined, color: green),
+        onPressed: _openAppSettings,
+      ), IconButton(
         tooltip: 'سلة الكفالات والتبرعات',
         onPressed: _openCart,
         icon: Badge(
@@ -2429,20 +2475,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     ));
   }
 
-  Widget _accountPage() => Column(children: [
-    Expanded(child: CharityAccountPage(cartCount: _cartCount, onOpenCart: _openCart)),
-    SafeArea(top: false, child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
-      child: SizedBox(width: double.infinity, child: FilledButton.icon(
-        onPressed: _openAppSettings,
-        icon: const Icon(Icons.settings_outlined),
-        label: const Padding(
-          padding: EdgeInsets.symmetric(vertical: 12),
-          child: Text('الإعدادات  Settings', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-        ),
-      )),
-    )),
-  ]);
+  // Settings lives in the app bar so the keyboard never obscures registration.
+  Widget _accountPage() => CharityAccountPage(
+    cartCount: _cartCount, onOpenCart: _openCart);
 
   Widget _section() {
     // Home Donate Now goes to the IQD/USD quick donation form.
@@ -2450,10 +2485,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     if (page == 3) {
       return ListView(padding: const EdgeInsets.all(14), children: [
         AltaawunQuickDonation(
-          onCheckoutUrl: (url) => setState(() {
-            checkoutUrl = url;
-            _isSlideDestination = false;
-          }),
+          onCheckoutUrl: _openProtectedCheckout,
         ),
         const SizedBox(height: 22),
         _donationCategories(),
