@@ -908,10 +908,18 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     _openNotificationUrl(url);
   }
 
+  bool _isPaymentUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+    final path = uri.path.toLowerCase();
+    return path.contains('/cart') || path.contains('/checkout') ||
+        path.contains('/order-pay') || uri.queryParameters.containsKey('add-to-cart');
+  }
+
   void _openNotificationUrl(String url) {
     if (!_validNewsUrl(url) || !mounted) return;
     setState(() {
-      checkoutUrl = url;
+      checkoutUrl = defaultTargetPlatform == TargetPlatform.iOS && _isPaymentUrl(url) ? null : url;
       selectedItem = null;
       wpSelectedCategory = null;
       page = 4;
@@ -933,6 +941,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     final cleanParams = Map<String, String>.from(original.queryParameters)
       ..remove('preview') ..remove('preview_id') ..remove('preview_nonce');
     final uri = original.replace(scheme: 'https', queryParameters: cleanParams.isEmpty ? null : cleanParams);
+    if (defaultTargetPlatform == TargetPlatform.iOS && _isPaymentUrl(uri.toString())) return;
     if (!isCharitySite) {
       setState(() { selectedItem = null; wpSelectedCategory = null; checkoutUrl = uri.toString(); _isSlideDestination = true; });
       return;
@@ -1183,6 +1192,16 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   }
 
   String _plainText(String html) => html
+      .replaceAll('&amp;#', '&#')
+      .replaceAllMapped(RegExp(r'&#(x[0-9a-fA-F]+|[0-9]+);?'), (match) {
+        final value = match.group(1)!;
+        final code = value.startsWith('x')
+            ? int.tryParse(value.substring(1), radix: 16)
+            : int.tryParse(value);
+        if (code == null || code < 32 || code > 0x10FFFF ||
+            (code >= 0xD800 && code <= 0xDFFF)) return match.group(0)!;
+        return String.fromCharCode(code);
+      })
       .replaceAll(RegExp(r'<[^>]*>'), '')
       .replaceAll('&amp;', '&')
       .replaceAll('&quot;', '"')
@@ -1222,9 +1241,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         final path = uri.path.toLowerCase();
         final isDonation = path.contains('/checkout') || path.contains('/cart') ||
             path.contains('/order-pay') || uri.queryParameters.containsKey('add-to-cart');
-        if (isDonation) setState(() => checkoutUrl = url);
+        if (isDonation && defaultTargetPlatform != TargetPlatform.iOS) setState(() => checkoutUrl = url);
       })),
-      if (isProduct) FilledButton.icon(
+      if (isProduct && defaultTargetPlatform != TargetPlatform.iOS) FilledButton.icon(
         onPressed: valid ? () {
           final productId = int.tryParse((item['id'] ?? '').toString());
           final productType = (item['type'] ?? 'simple').toString();
@@ -1729,7 +1748,10 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     ));
   }
 
-  void _openCart() => setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
+  void _openCart() {
+    if (defaultTargetPlatform == TargetPlatform.iOS) return;
+    setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
+  }
 
   void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; _isSlideDestination = false; });
   @override
@@ -1852,7 +1874,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         FittedBox(fit: BoxFit.scaleDown, child: Text('مدرسة الأيتام وكفالتهم',
           maxLines: 1, style: TextStyle(fontSize: 12))),
       ]) : Text(names[page], style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
-      actions: [IconButton(
+      actions: [if (defaultTargetPlatform != TargetPlatform.iOS) IconButton(
         tooltip: 'سلة الكفالات والتبرعات',
         onPressed: _openCart,
         icon: Badge(
@@ -1891,7 +1913,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         subtitle: const Text('تُحدّث تلقائيًا من لوحة إدارة الموقع'),
         onTap: () { Navigator.pop(context); go(0); },
       ),
-      ListTile(leading: const Icon(Icons.shopping_cart_outlined, color: green),
+      if (defaultTargetPlatform != TargetPlatform.iOS) ListTile(leading: const Icon(Icons.shopping_cart_outlined, color: green),
         title: const Text('سلة الكفالات والتبرعات'),
         onTap: () { Navigator.pop(context); _openCart(); }),
       ListTile(
@@ -1909,13 +1931,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ])),
     ]))),
     body: Stack(children: [
-      IndexedStack(index: checkoutUrl == null ? 0 : 1, children: [
+      IndexedStack(index: checkoutUrl == null || defaultTargetPlatform == TargetPlatform.iOS ? 0 : 1, children: [
       selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
-      _inAppCheckout(),
+      if (defaultTargetPlatform != TargetPlatform.iOS) _inAppCheckout() else const SizedBox.shrink(),
       ]),
       // Separate same-origin cart reader: initialise the badge when the app starts,
       // even if the customer has not opened the visible WooCommerce checkout.
-      Offstage(
+      if (defaultTargetPlatform != TargetPlatform.iOS) Offstage(
         offstage: true,
         child: SizedBox(width: 1, height: 1,
           child: _CheckoutContent(
@@ -2109,7 +2131,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                       Text((product['name'] ?? '').toString(), textAlign: TextAlign.right,
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 6),
-                      Text((product['price'] ?? '').toString(),
+                      Text(_plainText((product['price'] ?? '').toString()),
                         style: const TextStyle(fontSize: 15, color: green)),
                       const SizedBox(height: 8),
                       FilledButton(
