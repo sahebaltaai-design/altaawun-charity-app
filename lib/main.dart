@@ -1808,7 +1808,14 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   }
 
   Future<void> _openProtectedCheckout(String url) async {
-    if (!await _ensureMemberForCheckout() || !mounted) return;
+    // Sponsorship/cart require membership. Allow a signed quick-donation link
+    // to use the site's existing guest-donation policy unchanged.
+    final parsed = Uri.tryParse(url);
+    final isSignedQuickDonation = parsed != null &&
+        parsed.queryParameters.containsKey('altaawun_qd') &&
+        parsed.queryParameters.containsKey('qd_sig');
+    if (!isSignedQuickDonation && !await _ensureMemberForCheckout()) return;
+    if (!mounted) return;
     setState(() {
       checkoutUrl = url;
       _isSlideDestination = false;
