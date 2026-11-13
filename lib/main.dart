@@ -1,4 +1,5 @@
 import 'app_update_service.dart';
+import 'quick_donation_widget.dart';
 import 'charity_about_content.dart';
 import 'charity_voice_assistant.dart';
 import 'charity_account_page.dart';
@@ -2444,6 +2445,20 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   ]);
 
   Widget _section() {
+    // Home Donate Now goes to the IQD/USD quick donation form.
+    // Keep the cart, site checkout and the regular donation categories.
+    if (page == 3) {
+      return ListView(padding: const EdgeInsets.all(14), children: [
+        AltaawunQuickDonation(
+          onCheckoutUrl: (url) => setState(() {
+            checkoutUrl = url;
+            _isSlideDestination = false;
+          }),
+        ),
+        const SizedBox(height: 22),
+        _donationCategories(),
+      ]);
+    }
     final descriptions = [
       '',
       'كن سببًا في سعادة يتيم. الكفالة ليست مالًا فقط، بل هي رعاية واهتمام ومستقبل مشرق.',
