@@ -95,8 +95,11 @@ class _AccountState extends State<CharityAccountPage> {
     if (bearer != null) headers['Authorization'] = 'Bearer ' + bearer;
     // The v1 register route is shadowed by an older WordPress integration.
     // v2 uses a dedicated endpoint published by auth plugin 1.1.11.
-    final uri = path == 'register'
-        ? Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun-app/v2/register')
+    // Registration and account deletion use dedicated v2 routes to avoid
+    // collisions with legacy WordPress callbacks. Neither accepts a role
+    // or user ID from the app.
+    final uri = (path == 'register' || path == 'delete-account' || path == 'account-status')
+        ? Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun-app/v2/$path')
         : Uri.parse(base + path);
     final response = await (body == null
       ? http.get(uri, headers: headers)
@@ -118,7 +121,7 @@ class _AccountState extends State<CharityAccountPage> {
         'invalid_current_password': 'كلمة المرور الحالية غير صحيحة',
         'invalid_confirmation': 'لم يتم تأكيد طلب حذف الحساب',
         'account_delete_failed': 'تعذر حذف الحساب من الخادم. حاول مجددًا',
-        'protected_account': 'لا يمكن حذف حساب الإدارة من التطبيق',
+        'protected_account': 'الحساب الحالي يمتلك صلاحيات إدارية أو خاصة في WordPress ولا يمكن حذفه من التطبيق. تحقق من دور الحساب في لوحة المستخدمين.',
         'invalid_phone': 'أدخل رقم هاتف صحيحًا',
         'invalid_country': 'اختر رمز دولة صحيحًا مثل IQ أو US',
       };
