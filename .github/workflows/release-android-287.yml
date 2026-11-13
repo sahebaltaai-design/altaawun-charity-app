@@ -1,0 +1,284 @@
+
+name: Release Android 1.0.16 (287) fix signup country and sponsor login
+
+on:
+  push:
+    branches: [fix/member-registration-country-auth-cart-layout-287]
+    paths:
+      - '.github/workflows/release-android-287.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Generate preview notification sounds
+        run: |
+          python3 - <<'PY'
+          import math, wave, struct
+          from pathlib import Path
+          out = Path('assets/tones')
+          out.mkdir(parents=True, exist_ok=True)
+          sr=22050
+          tones = {
+              'urgent': [(880,.16),(0,.09),(1100,.18),(0,.08),(880,.23)],
+              'news': [(523,.22),(659,.22),(784,.32)],
+              'soft': [(392,.36),(523,.40)],
+              'default': [(660,.18),(0,.08),(660,.22)],
+          }
+          for name, notes in tones.items():
+              samples=[]
+              for freq,duration in notes:
+                  count=int(sr*duration)
+                  for i in range(count):
+                      fade=min(1,i/(sr*.015),(count-i)/(sr*.045))
+                      v=0 if not freq else math.sin(2*math.pi*freq*i/sr)*max(0,fade)*.3
+                      samples.append(struct.pack('<h',int(v*32767)))
+              with wave.open(str(out/f'{name}.wav'),'wb') as f:
+                  f.setnchannels(1);f.setsampwidth(2);f.setframerate(sr)
+                  f.writeframes(b''.join(samples))
+          PY
+
+      - name: Create Android platform
+        run: |
+          flutter create --platforms=android \
+            --org com.altaawuncharity .
+
+      - name: Enable microphone permission for opt-in voice assistant
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text()
+          permission = '<uses-permission android:name="android.permission.RECORD_AUDIO" />'
+          if permission not in s:
+              s = s.replace('<application', permission + '\n    <application', 1)
+          # Voice recognition is optional: do not filter devices without a microphone.
+          feature = '<uses-feature android:name="android.hardware.microphone" android:required="false" />'
+          if 'android.hardware.microphone' not in s:
+              s = s.replace('<application', feature + '\n    <application', 1)
+          queries = '<queries><intent><action android:name="android.speech.RecognitionService" /></intent></queries>'
+          if 'android.speech.RecognitionService' not in s:
+              s = s.replace('<application', queries + '\n    <application', 1)
+          p.write_text(s)
+          PY
+
+      - name: Install Android notification sound resources
+        run: |
+          mkdir -p android/app/src/main/res/raw
+          for tone in urgent news soft; do
+            cp "assets/tones/${tone}.wav" "android/app/src/main/res/raw/altaawun_${tone}.wav"
+          done
+
+      - name: Configure Arabic app name
+        run: bash tool/configure_app_name.sh && bash tool/configure_firebase.sh
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze Flutter home, donation and account deletion UI
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/main.dart lib/charity_account_page.dart lib/quick_donation_widget.dart
+
+      - name: Enable Android core library desugaring
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/build.gradle.kts')
+          if p.exists():
+              s = p.read_text()
+              s = s.replace('compileOptions {', 'compileOptions {\n        isCoreLibraryDesugaringEnabled = true', 1)
+              s += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
+          else:
+              p = Path('android/app/build.gradle')
+              s = p.read_text().replace('compileOptions {', 'compileOptions {\n        coreLibraryDesugaringEnabled true', 1)
+              s += "\n\ndependencies {\n    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'\n}\n"
+          p.write_text(s)
+          PY
+
+      - name: Work around upstream plugin JavaDoc lint parser crash in release builds
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('android/build.gradle.kts')
+          if not path.exists():
+              raise SystemExit('Expected Android root Gradle Kotlin script not found')
+          text = path.read_text()
+          workaround = '''
+          // CI workaround for Android Lint JavaDocParser NoSuchMethodError in
+          // url_launcher_android and webview_flutter_android release lint on current AGP.
+          // Only this dependency task is skipped; project compilation remains enabled.
+          subprojects {
+              if (name == "url_launcher_android" || name == "webview_flutter_android") {
+                  tasks.configureEach {
+                      if (name == "lintVitalAnalyzeRelease") {
+                          enabled = false
+                      }
+                  }
+              }
+          }
+          '''
+          if 'CI workaround for Android Lint JavaDocParser' not in text:
+              path.write_text(text + chr(10) + workaround)
+          PY
+
+      - name: Generate Android launcher icons from charity emblem
+        run: |
+          python3 -m pip install --user Pillow numpy
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import xml.etree.ElementTree as ET
+          src = Path('assets/png_style_emblem_the_same_arabic_logo_arched_em.png')
+          if not src.is_file():
+              raise SystemExit('Missing uploaded charity icon: assets/png_style_emblem_the_same_arabic_logo_arched_em.png')
+          im = Image.open(src).convert('RGBA')
+          # The uploaded image contains wide black margins around the emblem.
+          # Crop the visible non-black artwork before scaling it.
+          from PIL import ImageChops
+          rgb = im.convert('RGB')
+          mask = rgb.convert('L').point(lambda p: 255 if p > 28 else 0)
+          box = mask.getbbox()
+          if box:
+              margin = max(2, int(max(box[2]-box[0],box[3]-box[1]) * .06))
+              im = im.crop((max(0,box[0]-margin),max(0,box[1]-margin),
+                            min(im.width,box[2]+margin),min(im.height,box[3]+margin)))
+          root = Path('android/app/src/main/res')
+          for suffix, size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
+              out = Image.new('RGBA',(size,size),(0,0,0,255))
+              icon = im.copy()
+              icon.thumbnail((int(size*.94),int(size*.86)),Image.Resampling.LANCZOS)
+              out.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
+              dest=root/('mipmap-'+suffix)
+              dest.mkdir(parents=True,exist_ok=True)
+              out.convert('RGB').save(dest/'ic_launcher.png')
+          # Replace Flutter's adaptive launcher foreground and background too.
+          fg=root/'drawable-nodpi'
+          fg.mkdir(parents=True,exist_ok=True)
+          size=432
+          out=Image.new('RGBA',(size,size),(0,0,0,0))
+          icon=im.copy()
+          icon.thumbnail((350,350),Image.Resampling.LANCZOS)
+          out.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
+          out.save(fg/'altaawun_launcher_foreground.png')
+          adaptive=root/'mipmap-anydpi-v26'
+          adaptive.mkdir(parents=True,exist_ok=True)
+          xml='''<?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@android:color/black"/>
+              <foreground android:drawable="@drawable/altaawun_launcher_foreground"/>
+          </adaptive-icon>'''
+          (adaptive/'ic_launcher.xml').write_text(xml,encoding='utf-8')
+          PY
+
+      - name: Remove screenshot status bar from welcome background
+        run: |
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          p = Path('assets/welcome_background-2.png')
+          image = Image.open(p).convert('RGB')
+          # Source artwork is a phone screenshot; remove the top status strip.
+          # Preserve original dimensions to keep the splash layout consistent.
+          top = round(image.height * 0.065)
+          clean = image.crop((0, top, image.width, image.height))
+          clean = clean.resize(image.size, Image.Resampling.LANCZOS)
+          clean.save(p, 'PNG', optimize=True)
+          PY
+
+      - name: Configure release signing for Play Store
+        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, base64
+          root = Path('android')
+          (root / 'upload-keystore.jks').write_bytes(base64.b64decode(os.environ['KEYSTORE_BASE64']))
+          props = root / 'key.properties'
+          props.write_text('storeFile=upload-keystore.jks\nstorePassword=' + os.environ['KEYSTORE_PASSWORD'] + '\nkeyAlias=' + os.environ['KEY_ALIAS'] + '\nkeyPassword=' + os.environ['KEY_PASSWORD'] + '\n')
+          gradle = root / 'app/build.gradle.kts'
+          if gradle.exists():
+              s = gradle.read_text()
+              s = 'import java.util.Properties\nimport java.io.FileInputStream\n' + s
+              s = s.replace('android {', 'val uploadProps = Properties().apply { load(FileInputStream(rootProject.file("key.properties"))) }\n\nandroid {', 1)
+              s = s.replace('    buildTypes {', '''    signingConfigs {
+                  create("uploadRelease") {
+                      keyAlias = uploadProps["keyAlias"] as String
+                      keyPassword = uploadProps["keyPassword"] as String
+                      storeFile = rootProject.file(uploadProps["storeFile"] as String)
+                      storePassword = uploadProps["storePassword"] as String
+                  }
+              }
+              buildTypes {''', 1)
+              s = s.replace('signingConfig = signingConfigs.getByName("debug")', 'signingConfig = signingConfigs.getByName("uploadRelease")')
+              gradle.write_text(s)
+          else:
+              raise SystemExit('Expected Flutter Kotlin Gradle build file not found')
+          PY
+
+      - name: Build signed Play Store AAB
+        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build appbundle --release --build-name=1.0.16 --build-number=287 --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
+
+      - name: Upload signed Play Store AAB
+        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-charity-play-store-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+
+      - name: Upload to Google Play Closed Testing - Alpha (if service account is configured)
+        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' && env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.altaawuncharity.altaawun_charity_app
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          tracks: alpha
+          releaseName: 1.0.16 (287) - signup country code and sponsor login
+          status: completed
+          inAppUpdatePriority: 2
+
+      - name: Build APK
+        run: flutter build apk --debug --build-name=1.0.16 --build-number=287 --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-charity-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
