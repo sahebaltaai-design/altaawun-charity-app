@@ -213,7 +213,7 @@ class ProductDetailScreen extends StatelessWidget {
           ),
         const SizedBox(height: 18),
         Text(name, style: Theme.of(context).textTheme.headlineSmall),
-        if (price.isNotEmpty) ...[
+        if (price.isNotEmpty && defaultTargetPlatform != TargetPlatform.iOS) ...[
           const SizedBox(height: 10),
           Text(price, style: const TextStyle(
             color: green, fontSize: 20, fontWeight: FontWeight.bold)),
@@ -1231,7 +1231,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       if (!isProduct) const Padding(padding: EdgeInsets.only(bottom: 10),
         child: Text('تفاصيل الخبر', style: TextStyle(fontSize: 16, color: green, fontWeight: FontWeight.bold))),
       Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, height: 1.35)),
-      if (price.isNotEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
+      if (price.isNotEmpty && defaultTargetPlatform != TargetPlatform.iOS) Padding(padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(_plainText(price), style: const TextStyle(fontSize: 19, color: green))),
       if (content.isNotEmpty && isProduct) Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Text(_plainText(content), style: const TextStyle(fontSize: 16, height: 1.7))),
       if (content.isNotEmpty && !isProduct) SizedBox(height: MediaQuery.sizeOf(context).height * 0.72, child: _HtmlContent(content: content, onLink: (url) {
@@ -2131,8 +2131,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                       Text((product['name'] ?? '').toString(), textAlign: TextAlign.right,
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 6),
-                      Text(_plainText((product['price'] ?? '').toString()),
-                        style: const TextStyle(fontSize: 15, color: green)),
+                      if (defaultTargetPlatform != TargetPlatform.iOS)
+                        Text(_plainText((product['price'] ?? '').toString()),
+                          style: const TextStyle(fontSize: 15, color: green)),
                       const SizedBox(height: 8),
                       FilledButton(
                         onPressed: () => setState(() {
@@ -2142,7 +2143,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                           selectedItem = Map<String, dynamic>.from(product);
                           checkoutUrl = null;
                         }),
-                        child: const Text('اكفل الآن')),
+                        child: Text(defaultTargetPlatform == TargetPlatform.iOS ? 'عرض التفاصيل' : 'اكفل الآن')),
                     ])),
                     const SizedBox(width: 12),
                     ClipRRect(borderRadius: BorderRadius.circular(9),
