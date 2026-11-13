@@ -1,0 +1,41 @@
+name: Diagnose live WordPress registration route (invalid sample only)
+on:
+  push:
+    branches: [fix/member-registration-country-auth-cart-layout-287]
+    paths: [.github/workflows/diagnose-live-register.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe plugin version and invalid registration request safely
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request, urllib.error
+          root = "https://www.aytamaliraq.com/wp-json/altaawun-app/v1"
+          def probe(path, payload=None):
+              url = root + path
+              data = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(url, data=data,
+                  headers={"Content-Type": "application/json", "Accept": "application/json",
+                           "User-Agent": "Altaawun-App-Diagnostic/1.0"},
+                  method="GET" if data is None else "POST")
+              try:
+                  response = urllib.request.urlopen(req, timeout=20)
+                  code, body = response.status, response.read(8000)
+              except urllib.error.HTTPError as e:
+                  code, body = e.code, e.read(8000)
+              try: result = json.loads(body)
+              except Exception: result = {"non_json": body[:100].decode(errors="ignore")}
+              if not isinstance(result,dict): result = {"type":type(result).__name__}
+              return {"http_status":code, "code": result.get("code"), 
+                      "field":result.get("data",{}).get("field") if isinstance(result.get("data"),dict) else None,
+                      "version": result.get("version"), "registration_error_fields":result.get("registration_error_fields")}
+          print("VERSION",json.dumps(probe("/version")))
+          # This is deliberately invalid before any account can be created.
+          print("INVALID_REGISTRATION",json.dumps(probe("/register",{"email":"not-an-email", "password":""})))
+          PY
