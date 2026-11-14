@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -64,6 +65,10 @@ class _AccountState extends State<CharityAccountPage> {
         'invalid_country': 'أدخل رمز الدولة مثل IQ أو US',
         'missing_registration_field': 'أكمل حقول التسجيل المطلوبة',
         'email_delivery_failed': 'تعذر إرسال البريد من الموقع',
+        'invalid_current_password': 'كلمة المرور الحالية غير صحيحة',
+        'invalid_confirmation': 'يجب تأكيد حذف الحساب',
+        'protected_account': 'لا يمكن حذف حساب الإدارة من التطبيق',
+        'account_delete_failed': 'تعذر حذف الحساب؛ حاول مرة أخرى',
       };
       throw Exception(messages[code] ?? 'فشل الاتصال: ' + response.statusCode.toString());
     }
@@ -193,6 +198,140 @@ class _AccountState extends State<CharityAccountPage> {
     if (mounted) setState(() { token = null; user = null; orders = []; busy = false; mode = 'login'; });
   }
 
+  Future<void> checkDeletionEligibility() async {
+    if (busy || token == null) return;
+    setState(() { busy = true; error = null; });
+    try {
+      final result = await api('account-status', v2: true, bearer: token);
+      if (!mounted) return;
+      setState(() => error = result['can_self_delete'] == true
+          ? 'هذا الحساب مؤهل للحذف من داخل التطبيق، ولم يتم حذف أي بيانات.'
+          : 'هذا الحساب غير مؤهل للحذف الذاتي. لم يتم حذف أي بيانات.');
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> editProfile() async {
+    if (busy || token == null || user == null) return;
+    final keys = ['billing_first_name', 'billing_last_name', 'billing_phone',
+      'billing_country', 'billing_state', 'billing_city', 'billing_address_1', 'billing_postcode'];
+    final labels = ['الاسم الأول', 'اسم العائلة', 'رقم الهاتف', 'رمز الدولة',
+      'المحافظة أو الولاية', 'المدينة', 'العنوان', 'الرمز البريدي (اختياري للعراق)'];
+    final fields = [for (final key in keys)
+      TextEditingController(text: user![key]?.toString() ?? '')];
+    try {
+      final save = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('تعديل بياناتي والعنوان'),
+          content: SizedBox(
+            width: 440,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                for (var i = 0; i < fields.length; i++) ...[
+                  TextField(
+                    controller: fields[i],
+                    keyboardType: i == 2 ? TextInputType.phone : TextInputType.text,
+                    decoration: InputDecoration(labelText: labels[i], border: const OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('إلغاء')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('حفظ البيانات')),
+          ],
+        ),
+      ) ?? false;
+      if (!save || !mounted) return;
+      setState(() { busy = true; error = null; });
+      final body = <String, String>{
+        for (var i = 0; i < keys.length; i++) keys[i]: fields[i].text.trim()
+      };
+      final result = await api('profile', bearer: token, body: body);
+      if (result['user'] is! Map) throw Exception('لم يؤكد الخادم تحديث البيانات');
+      if (mounted) setState(() {
+        user = Map<String, dynamic>.from(result['user'] as Map);
+        error = 'تم حفظ البيانات بنجاح';
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      for (final field in fields) { field.dispose(); }
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> deleteAccount() async {
+    if (busy || token == null) return;
+    final currentPassword = TextEditingController();
+    bool confirmed = false;
+    try {
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('حذف حسابي نهائيًا'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('سيُحذف حسابك من الموقع ولن تتمكن من تسجيل الدخول إليه. قد تُحتفظ سجلات التبرعات والطلبات المالية وفق المتطلبات القانونية. لا يمكن التراجع عن حذف الحساب.'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: currentPassword,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'كلمة المرور الحالية للتأكيد',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () {
+                if (currentPassword.text.isEmpty) return;
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('تأكيد الحذف النهائي', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ) ?? false;
+      if (!confirmed || !mounted) return;
+      setState(() { busy = true; error = null; });
+      final result = await api('delete-account', v2: true, bearer: token,
+        body: {'confirm': 'DELETE', 'password': currentPassword.text});
+      if (result['deleted'] != true) throw Exception('لم يؤكد الخادم حذف الحساب');
+      await storage.delete(key: 'altaawun_token');
+      if (!mounted) return;
+      setState(() {
+        token = null;
+        user = null;
+        orders = [];
+        mode = 'login';
+        error = 'تم حذف الحساب بنجاح';
+        busy = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        error = e.toString().replaceFirst('Exception: ', '');
+        busy = false;
+      });
+    } finally {
+      currentPassword.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(18), children: [
     const SizedBox(height: 16),
@@ -206,6 +345,24 @@ class _AccountState extends State<CharityAccountPage> {
       textAlign: TextAlign.center, style: const TextStyle(color: Colors.deepOrange))),
     if (user != null) ...[
       Card(child: ListTile(title: const Text('البريد الإلكتروني'), subtitle: Text(user!['email']?.toString() ?? ''))),
+      if (Platform.isIOS) ...[
+        Card(child: ListTile(
+          leading: const Icon(Icons.location_on_outlined, color: Color(0xFF00652A)),
+          title: const Text('معلوماتي وعنوان الفاتورة'),
+          subtitle: Text([
+            user!['billing_address_1'], user!['billing_city'],
+            user!['billing_state'], user!['billing_country'],
+            user!['billing_phone']
+          ].where((v) => v != null && v.toString().trim().isNotEmpty)
+            .join('، ')),
+        )),
+        OutlinedButton.icon(
+          onPressed: busy ? null : editProfile,
+          icon: const Icon(Icons.edit_outlined),
+          label: const Text('تعديل بياناتي والعنوان'),
+        ),
+        const SizedBox(height: 16),
+      ],
       const SizedBox(height: 16),
       const Text('كفالاتي في السلة', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
       Card(child: ListTile(
@@ -225,6 +382,17 @@ class _AccountState extends State<CharityAccountPage> {
         subtitle: Text('التاريخ: ' + (order['date']?.toString() ?? '') + ' | الحالة: ' + (order['status']?.toString() ?? '')),
         trailing: Text((order['total']?.toString() ?? '') + ' ' + (order['currency']?.toString() ?? '')))),
       OutlinedButton.icon(onPressed: busy ? null : logout, icon: const Icon(Icons.logout), label: const Text('تسجيل الخروج')),
+      if (Platform.isIOS) ...[
+      const SizedBox(height: 10),
+      TextButton.icon(
+        onPressed: busy ? null : deleteAccount,
+        icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+        label: const Text('حذف حسابي نهائيًا', style: TextStyle(color: Colors.red)),
+      ),
+      OutlinedButton.icon(onPressed: busy ? null : checkDeletionEligibility,
+        icon: const Icon(Icons.verified_user_outlined),
+        label: const Text('فحص صلاحية حذف الحساب (دون حذف)')),
+      ],
     ] else ...[
       Text(mode == 'register' ? 'إنشاء حساب جديد' : mode == 'verify' ? 'تأكيد البريد الإلكتروني' : mode == 'forgot' ? 'استعادة كلمة المرور' : 'تسجيل الدخول',
         textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
