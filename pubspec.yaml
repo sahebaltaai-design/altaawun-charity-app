@@ -1,7 +1,7 @@
 name: altaawun_charity_app
 description: تطبيق جمعية التعاون الخيرية لرعاية الأيتام وكفالتهم
 publish_to: none
-version: 1.0.19+250
+version: 1.0.20+251
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
