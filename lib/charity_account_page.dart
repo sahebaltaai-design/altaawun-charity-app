@@ -64,6 +64,10 @@ class _AccountState extends State<CharityAccountPage> {
         'invalid_country': 'أدخل رمز الدولة مثل IQ أو US',
         'missing_registration_field': 'أكمل حقول التسجيل المطلوبة',
         'email_delivery_failed': 'تعذر إرسال البريد من الموقع',
+        'invalid_current_password': 'كلمة المرور الحالية غير صحيحة',
+        'invalid_confirmation': 'يجب تأكيد حذف الحساب',
+        'protected_account': 'لا يمكن حذف حساب الإدارة من التطبيق',
+        'account_delete_failed': 'تعذر حذف الحساب؛ حاول مرة أخرى',
       };
       throw Exception(messages[code] ?? 'فشل الاتصال: ' + response.statusCode.toString());
     }
@@ -193,6 +197,69 @@ class _AccountState extends State<CharityAccountPage> {
     if (mounted) setState(() { token = null; user = null; orders = []; busy = false; mode = 'login'; });
   }
 
+  Future<void> deleteAccount() async {
+    if (busy || token == null) return;
+    final currentPassword = TextEditingController();
+    bool confirmed = false;
+    try {
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('حذف حسابي نهائيًا'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('سيُحذف حسابك من الموقع ولن تتمكن من تسجيل الدخول إليه. قد تُحتفظ سجلات التبرعات والطلبات المالية وفق المتطلبات القانونية. لا يمكن التراجع عن حذف الحساب.'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: currentPassword,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'كلمة المرور الحالية للتأكيد',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('إلغاء')),
+            TextButton(
+              onPressed: () {
+                if (currentPassword.text.isEmpty) return;
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('تأكيد الحذف النهائي', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ) ?? false;
+      if (!confirmed || !mounted) return;
+      setState(() { busy = true; error = null; });
+      final result = await api('delete-account', v2: true, bearer: token,
+        body: {'confirm': 'DELETE', 'password': currentPassword.text});
+      if (result['deleted'] != true) throw Exception('لم يؤكد الخادم حذف الحساب');
+      await storage.delete(key: 'altaawun_token');
+      if (!mounted) return;
+      setState(() {
+        token = null;
+        user = null;
+        orders = [];
+        mode = 'login';
+        error = 'تم حذف الحساب بنجاح';
+        busy = false;
+      });
+    } catch (e) {
+      if (mounted) setState(() {
+        error = e.toString().replaceFirst('Exception: ', '');
+        busy = false;
+      });
+    } finally {
+      currentPassword.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(18), children: [
     const SizedBox(height: 16),
@@ -225,6 +292,12 @@ class _AccountState extends State<CharityAccountPage> {
         subtitle: Text('التاريخ: ' + (order['date']?.toString() ?? '') + ' | الحالة: ' + (order['status']?.toString() ?? '')),
         trailing: Text((order['total']?.toString() ?? '') + ' ' + (order['currency']?.toString() ?? '')))),
       OutlinedButton.icon(onPressed: busy ? null : logout, icon: const Icon(Icons.logout), label: const Text('تسجيل الخروج')),
+      const SizedBox(height: 10),
+      TextButton.icon(
+        onPressed: busy ? null : deleteAccount,
+        icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+        label: const Text('حذف حسابي نهائيًا', style: TextStyle(color: Colors.red)),
+      ),
     ] else ...[
       Text(mode == 'register' ? 'إنشاء حساب جديد' : mode == 'verify' ? 'تأكيد البريد الإلكتروني' : mode == 'forgot' ? 'استعادة كلمة المرور' : 'تسجيل الدخول',
         textAlign: TextAlign.center, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
