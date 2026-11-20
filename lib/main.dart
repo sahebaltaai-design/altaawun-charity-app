@@ -742,6 +742,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   String _homeTileSize = 'medium';
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
+    // iOS notifications use APNs foreground presentation.
+    if (defaultTargetPlatform != TargetPlatform.android) return;
     final tone = const ['urgent', 'news', 'soft', 'default'].contains(_notificationTone)
         ? _notificationTone : 'default';
     final channelId = _notificationChannelPrefix + tone + (_notificationVibration ? '_vibrate' : '_silent');
@@ -756,7 +758,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         sound: tone == 'default' ? null : RawResourceAndroidNotificationSound('altaawun_' + tone),
         enableVibration: _notificationVibration,
       )),
-      payload: (message.data['url'] ?? message.data['link'] ?? '').toString(),
+      payload: _notificationDestination(message.data) ?? '',
     );
   }
 
@@ -900,12 +902,28 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   bool _validNewsUrl(String value) {
     final uri = Uri.tryParse(value);
     return uri != null && uri.scheme == 'https' &&
-        (uri.host == 'aytamaliraq.com' || uri.host == 'www.aytamaliraq.com');
+        uri.host.isNotEmpty && uri.userInfo.isEmpty;
+  }
+
+  String? _notificationDestination(Map<String, dynamic> data) {
+    for (final key in const ['url', 'link', 'post_url', 'permalink', 'target_url', 'deeplink']) {
+      final raw = (data[key] ?? '').toString().trim();
+      if (raw.isEmpty) continue;
+      final value = raw.startsWith('www.') ? 'https://$raw' : raw;
+      if (_validNewsUrl(value)) return value;
+    }
+    final id = int.tryParse((data['post_id'] ?? data['postId'] ?? data['id'] ?? '').toString());
+    if (id != null && id > 0) return 'https://www.aytamaliraq.com/?p=$id';
+    return null;
   }
 
   void _openNotificationNews(RemoteMessage message) {
-    final url = (message.data['url'] ?? message.data['link'] ?? '').toString();
-    _openNotificationUrl(url);
+    final url = _notificationDestination(message.data);
+    if (url != null) {
+      _openNotificationUrl(url);
+    } else {
+      debugPrint('Push notification missing a valid URL or post ID');
+    }
   }
 
   bool _isPaymentUrl(String url) {
@@ -918,12 +936,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   void _openNotificationUrl(String url) {
     if (!_validNewsUrl(url) || !mounted) return;
-    setState(() {
-      checkoutUrl = defaultTargetPlatform == TargetPlatform.iOS && _isPaymentUrl(url) ? null : url;
-      selectedItem = null;
-      wpSelectedCategory = null;
-      page = 4;
-    });
+    // WP posts open in the native detail screen; other HTTPS links in-app.
+    unawaited(_openSlideUrl(url));
   }
 
   // Open a slider destination as its actual content, not the news index.
@@ -992,6 +1006,20 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   String _pushDiagnostic = 'جاري تسجيل الجهاز للإشعارات';
   bool _pushSetupRunning = false;
+  bool _pushListenersRegistered = false;
+
+  Future<void> _handleInitialPush(FirebaseMessaging messaging) async {
+    try {
+      final initial = await messaging.getInitialMessage();
+      if (initial != null && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _openNotificationNews(initial);
+        });
+      }
+    } catch (error) {
+      debugPrint('Initial push lookup failed: $error');
+    }
+  }
 
   Future<void> _setupPush() async {
     if (_pushSetupRunning) return;
@@ -1012,6 +1040,38 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       debugPrint('Notification authorization: ${permission.authorizationStatus}');
       if (mounted) setState(() => _pushDiagnostic = 'صلاحية الإشعارات: ${permission.authorizationStatus}');
       if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await messaging.setForegroundNotificationPresentationOptions(
+          alert: true, badge: true, sound: true,
+        );
+      }
+      // Register listeners before APNs registration completes.
+      if (!_pushListenersRegistered) {
+        _pushListenersRegistered = true;
+        FirebaseMessaging.onMessageOpenedApp.listen(_openNotificationNews);
+        unawaited(_handleInitialPush(messaging));
+        messaging.onTokenRefresh.listen((value) {
+          if (!mounted) return;
+          setState(() => _fcmToken = value);
+          unawaited(_syncNotificationToneTopic().catchError((Object error) {
+            debugPrint('Push topic refresh failed: $error');
+          }));
+        });
+        FirebaseMessaging.onMessage.listen((message) {
+          if (!mounted) return;
+          if (defaultTargetPlatform == TargetPlatform.android) {
+            unawaited(_showForegroundNotification(message));
+          }
+          final url = _notificationDestination(message.data);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(message.notification?.title ?? 'إشعار جديد من الجمعية'),
+            action: url == null ? null : SnackBarAction(
+              label: 'قراءة الخبر',
+              onPressed: () => _openNotificationUrl(url),
+            ),
+          ));
+        });
+      }
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
         // APNs registration is asynchronous on real iPhones. FCM token/topic
         // calls before the APNs token exists can fail and abort setup.
         String? apnsToken;
@@ -1030,26 +1090,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       final token = await messaging.getToken();
       if (mounted) setState(() { _fcmToken = token; _pushDiagnostic = token == null ? 'لم يُصدر Firebase رمز FCM' : 'تم تسجيل الجهاز بنجاح'; });
       try { await _syncNotificationToneTopic(); } catch (error) { debugPrint('Push topic sync failed: $error'); }
-      FirebaseMessaging.instance.onTokenRefresh.listen((value) {
-        if (mounted) setState(() => _fcmToken = value);
-      });
-      FirebaseMessaging.onMessageOpenedApp.listen(_openNotificationNews);
-      final initial = await messaging.getInitialMessage();
-      if (initial != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _openNotificationNews(initial));
-      }
-      FirebaseMessaging.onMessage.listen((message) {
-        if (!mounted) return;
-        _showForegroundNotification(message);
-        final url = (message.data['url'] ?? '').toString();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(message.notification?.title ?? 'إشعار جديد من الجمعية'),
-          action: _validNewsUrl(url) ? SnackBarAction(
-            label: 'قراءة الخبر',
-            onPressed: () => _openNotificationNews(message),
-          ) : null,
-        ));
-      });
+      // Foreground/tap/token listeners registered before APNs token retrieval.
     } catch (e) {
       debugPrint('FCM initialization: $e');
       if (mounted) setState(() => _pushDiagnostic = 'فشل تسجيل الإشعارات: $e');
@@ -1931,9 +1972,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ])),
     ]))),
     body: Stack(children: [
-      IndexedStack(index: checkoutUrl == null || defaultTargetPlatform == TargetPlatform.iOS ? 0 : 1, children: [
+      IndexedStack(index: checkoutUrl == null ||
+          (defaultTargetPlatform == TargetPlatform.iOS && !_isSlideDestination) ? 0 : 1, children: [
       selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
-      if (defaultTargetPlatform != TargetPlatform.iOS) _inAppCheckout() else const SizedBox.shrink(),
+      if (defaultTargetPlatform != TargetPlatform.iOS || _isSlideDestination)
+          _inAppCheckout() else const SizedBox.shrink(),
       ]),
       // Separate same-origin cart reader: initialise the badge when the app starts,
       // even if the customer has not opened the visible WooCommerce checkout.
