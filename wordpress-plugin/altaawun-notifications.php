@@ -2,7 +2,7 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.6
+ * Version: 1.2.7
  */
 defined('ABSPATH') || exit;
 add_action('admin_menu', function () {
@@ -40,7 +40,7 @@ function altaawun_push_page() {
    'آخر إشعار يدوي: '.$label.$note.' — '.($last['time']??'')
   ).'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.6</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.7</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
@@ -52,8 +52,8 @@ function altaawun_push_page() {
   echo '<option value="'.absint($item->ID).'">'.esc_html(get_the_title($item)).'</option>';
  echo '</select></p>';
  echo '<p><label>أو أدخل رابط الخبر من موقع الجمعية:<br><input type="url" name="url" placeholder="https://www.aytamaliraq.com/..." style="width:90%;direction:ltr"></label></p>';
- echo '<p><label><input type="checkbox" name="open_home" value="1"> رسالة عامة بلا رابط: تفتح الصفحة الرئيسية فقط</label></p>';
- echo '<p>لإظهار تفاصيل خبر بعد الضغط على الإشعار، يجب اختيار خبر منشور أو إدخال رابطه.</p>';
+ echo '<p><strong>إشعار نصي فقط:</strong> اترك اختيار الخبر والرابط فارغين. عند الضغط على الإشعار ستظهر نافذة داخل التطبيق تعرض العنوان والنص الكامل.</p>';
+ echo '<p>تتطلب نافذة التفاصيل النصية نسخة التطبيق المحدثة. إشعارات الأخبار ذات الروابط تستمر بالعمل كالسابق.</p>';
  echo '<p><label>نوع الإشعار <select name="notification_type"><option value="normal">عادي</option><option value="urgent">عاجل</option></select></label></p>';
  echo '<button class="button button-primary" name="altaawun_send">إرسال الإشعار</button></form><p>يُرسل إشعار تلقائي عند نشر مقال أو منتج جديد لأول مرة.</p></div>';
 }
@@ -76,8 +76,9 @@ function altaawun_queue_manual_notification($title,$body,$url='',$type='normal',
   if (!$post || $post->post_status!=='publish' || $post->post_type!=='post')
    return new WP_Error('post','الخبر المحدد غير منشور. اختر خبرًا منشورًا.');
   $url=get_permalink($post_id);
- } elseif (!$open_home) {
-  return new WP_Error('destination','اختر خبرًا أو اكتب رابطه، أو فعّل خيار رسالة عامة بدون تفاصيل.');
+ } else {
+  // No published post selected and no URL: show the message itself.
+  $open_home=true;
  }
  // Fast path: send immediately, without waiting for WP-Cron.
  // cURL multi dispatches all nine topic messages concurrently, while
@@ -151,7 +152,11 @@ function altaawun_push_send($title,$body,$url='',$type='normal',$post_id=0,$rela
  $manual_messages=[];
  foreach (altaawun_push_topics() as $topic=>$channel) {
   if (in_array($topic,$sent,true)) continue;
-  $data=['type'=>$type==='urgent'?'urgent':'normal','screen'=>$open_home?'home':'news'];
+  $data=['type'=>$type==='urgent'?'urgent':'normal','screen'=>($open_home && !$url)?'message':'news'];
+  if ($open_home && !$url) {
+   $data['title']=mb_substr(wp_strip_all_tags($title),0,120);
+   $data['body']=mb_substr(wp_strip_all_tags($body),0,1000);
+  }
   if ($url) $data['url']=$url;
   if ($related_post_id>0) $data['post_id']=(string)$related_post_id;
   elseif ($post_id>0) $data['post_id']=(string)$post_id;
