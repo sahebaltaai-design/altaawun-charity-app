@@ -587,7 +587,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Widget _bundledSplash({BoxFit? fit}) => Image.asset(
-    'assets/welcome_background-2.png',
+    'assets/altaawn_school_splash_approved.jpg',
     fit: fit ?? _splashConfig.fit,
     alignment: _splashConfig.alignment,
     width: double.infinity,
