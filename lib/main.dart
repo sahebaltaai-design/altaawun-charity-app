@@ -642,9 +642,7 @@ class _SplashScreenState extends State<SplashScreen> {
           // no duplicated, blurred, or green letterbox bands behind the photo.
           // The picture itself uses BoxFit.fill so every pixel remains visible.
           ColoredBox(
-            color: _splashConfig.preserveFullImage
-                ? const Color(0xFF79C9EE)
-                : deepGreen,
+            color: Colors.white,
           ),
           SafeArea(
             top: true,
