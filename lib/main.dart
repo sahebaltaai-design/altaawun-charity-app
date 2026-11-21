@@ -22,8 +22,14 @@ import 'package:google_fonts/google_fonts.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // iOS builds may not have Firebase configuration yet. Never block the UI
-  // from launching because an optional push service cannot initialize.
+  // Render the school welcome image immediately instead of holding the
+  // Android system splash while Firebase and notification channels initialize.
+  runApp(const AltaawunApp());
+  unawaited(_initializeStartupServices());
+}
+
+Future<void> _initializeStartupServices() async {
+  // Optional notification services must never block the first Flutter frame.
   try {
     await Firebase.initializeApp();
   } catch (error) {
@@ -34,7 +40,6 @@ Future<void> main() async {
   } catch (error) {
     debugPrint('Notification channels unavailable at startup: $error');
   }
-  runApp(const AltaawunApp());
 }
 
 const _notificationChannelPrefix = 'altaawun_tone_v2_';
@@ -657,38 +662,6 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
           ),
-          if (_splashConfig.showCaption) Positioned(
-          left: 16,
-          right: 16,
-          bottom: 16,
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF003B1D),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFFFD66A), width: 1),
-                  ),
-                  child: const Text(
-                    'معًا .. نصنع لهم مستقبلًا أفضل',
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
         ],
       )),
     ),
