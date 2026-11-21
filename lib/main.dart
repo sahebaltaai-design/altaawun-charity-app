@@ -556,11 +556,18 @@ class _SplashScreenState extends State<SplashScreen> {
         const ColoredBox(color: deepGreen),
         // Preserve the full artwork and logo without stretching or cropping
         // on phones with different aspect ratios.
-        Image.asset(
-          'assets/welcome_background-2.png',
-          fit: BoxFit.contain,
-          alignment: Alignment.center,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        // Do not draw the top of the charity logo underneath the status bar.
+        // The entire welcome artwork is scaled inside the safe display bounds.
+        SafeArea(
+          top: true,
+          bottom: false,
+          minimum: const EdgeInsets.only(top: 12),
+          child: Image.asset(
+            'assets/welcome_background-2.png',
+            fit: BoxFit.contain,
+            alignment: Alignment.topCenter,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
         ),
         Positioned(
           left: 16,
@@ -571,28 +578,6 @@ class _SplashScreenState extends State<SplashScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SizedBox(
-                  height: 64,
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _enterApp,
-                    icon: const Icon(Icons.login, size: 27),
-                    label: const FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text('الدخول إلى التطبيق',
-                        style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF00652A),
-                      foregroundColor: Colors.white,
-                      elevation: 6,
-                      side: const BorderSide(color: Color(0xFFFFD66A), width: 2.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(36)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
