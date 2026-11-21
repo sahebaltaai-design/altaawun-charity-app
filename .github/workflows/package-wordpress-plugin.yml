@@ -18,7 +18,7 @@ jobs:
       - name: Validate WordPress plugin PHP
         run: |
           php -l wordpress-plugin/altaawun-notifications.php
-          grep -q 'Version: 1.2.10' wordpress-plugin/altaawun-notifications.php
+          grep -q 'Version: 1.2.11' wordpress-plugin/altaawun-notifications.php
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -39,8 +39,8 @@ jobs:
           print('WordPress default preview:', cleaned.size)
           PY
           cd dist
-          zip -r altaawun-notifications-v1.2.10.zip altaawun-notifications
+          zip -r altaawun-notifications-v1.2.11.zip altaawun-notifications
       - uses: actions/upload-artifact@v4
         with:
-          name: altaawun-notifications-v1.2.10
-          path: dist/altaawun-notifications-v1.2.10.zip
+          name: altaawun-notifications-v1.2.11
+          path: dist/altaawun-notifications-v1.2.11.zip
