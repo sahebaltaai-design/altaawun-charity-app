@@ -135,6 +135,7 @@ function altaawun_push_send($title,$body,$url='',$type='normal',$post_id=0,$rela
  $sent=$post_id>0?get_post_meta($post_id,'_altaawun_push_topics_sent',true):[];
  if (!is_array($sent)) $sent=[];
  $errors=[];
+ $manual_messages=[];
  foreach (altaawun_push_topics() as $topic=>$channel) {
   if (in_array($topic,$sent,true)) continue;
   $data=['type'=>$type==='urgent'?'urgent':'normal','screen'=>$open_home?'home':'news'];
@@ -148,6 +149,12 @@ function altaawun_push_send($title,$body,$url='',$type='normal',$post_id=0,$rela
    'android'=>['priority'=>'high','notification'=>['channel_id'=>$channel]],
    'apns'=>['headers'=>['apns-push-type'=>'alert','apns-priority'=>'10'],'payload'=>['aps'=>['sound'=>'default']]]
   ];
+  // Manual notifications can dispatch all tone topics concurrently.
+  // Keep the existing, working automatic-post send path unchanged.
+  if ($post_id===0 && function_exists('curl_multi_init') && !defined('WP_PROXY_HOST')) {
+   $manual_messages[$topic]=$message;
+   continue;
+  }
   $response=wp_remote_post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($a['project_id']).'/messages:send',['timeout'=>20,'headers'=>['Authorization'=>'Bearer '.$token,'Content-Type'=>'application/json'],'body'=>wp_json_encode(['message'=>$message])]);
   if (is_wp_error($response)) $errors[]=$topic.': '.$response->get_error_message();
   elseif (wp_remote_retrieve_response_code($response)!==200) $errors[]=$topic.': HTTP '.wp_remote_retrieve_response_code($response).' '.mb_substr(wp_strip_all_tags(wp_remote_retrieve_body($response)),0,160);
@@ -156,7 +163,58 @@ function altaawun_push_send($title,$body,$url='',$type='normal',$post_id=0,$rela
    if ($post_id>0) update_post_meta($post_id,'_altaawun_push_topics_sent',$sent);
   }
  }
+ if ($manual_messages) {
+  $batch=altaawun_push_send_manual_parallel($manual_messages,$token,$a['project_id']);
+  if (is_wp_error($batch)) $errors[]=$batch->get_error_message();
+ }
  if ($errors) return new WP_Error('fcm','فشل الإرسال إلى '.count($errors).' قنوات؛ '.implode(' | ',array_slice($errors,0,2)));
+ return true;
+}
+
+/** Send manual alerts to their individual sound channels concurrently. */
+function altaawun_push_send_manual_parallel($messages,$token,$project) {
+ $multi=curl_multi_init();
+ $handles=[];
+ $endpoint='https://fcm.googleapis.com/v1/projects/'.rawurlencode($project).'/messages:send';
+ foreach ($messages as $topic=>$message) {
+  $handle=curl_init($endpoint);
+  curl_setopt_array($handle,[
+   CURLOPT_POST=>true,
+   CURLOPT_POSTFIELDS=>wp_json_encode(['message'=>$message]),
+   CURLOPT_HTTPHEADER=>['Authorization: Bearer '.$token,'Content-Type: application/json'],
+   CURLOPT_RETURNTRANSFER=>true,
+   CURLOPT_CONNECTTIMEOUT=>10,
+   CURLOPT_TIMEOUT=>25,
+   CURLOPT_SSL_VERIFYPEER=>true,
+   CURLOPT_SSL_VERIFYHOST=>2
+  ]);
+  curl_multi_add_handle($multi,$handle);
+  $handles[$topic]=$handle;
+ }
+ $running=0;
+ $status=CURLM_OK;
+ do {
+  $status=curl_multi_exec($multi,$running);
+  if ($status!==CURLM_OK) break;
+  if ($running>0) {
+   $selected=curl_multi_select($multi,1);
+   if ($selected===-1) usleep(100000);
+  }
+ } while ($running>0);
+ $errors=[];
+ if ($status!==CURLM_OK) $errors[]='تعذر تنفيذ طلبات Firebase المتزامنة';
+ foreach ($handles as $topic=>$handle) {
+  $http=(int)curl_getinfo($handle,CURLINFO_HTTP_CODE);
+  $error=curl_error($handle);
+  if ($error || $http!==200) {
+   $body=(string)curl_multi_getcontent($handle);
+   $errors[]=$topic.': '.($error?:'Firebase HTTP '.$http.' '.mb_substr(wp_strip_all_tags($body),0,120));
+  }
+  curl_multi_remove_handle($multi,$handle);
+  curl_close($handle);
+ }
+ curl_multi_close($multi);
+ if ($errors) return new WP_Error('fcm_parallel',implode(' | ',array_slice($errors,0,2)));
  return true;
 }
 function altaawun_push_queue_post($id) {
