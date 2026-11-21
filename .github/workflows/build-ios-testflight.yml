@@ -204,10 +204,25 @@ jobs:
           if 'import FirebaseMessaging' not in source:
               source = source.replace('import UIKit', 'import UIKit\nimport FirebaseMessaging')
           if 'application.registerForRemoteNotifications()' not in source:
-              anchor = 'GeneratedPluginRegistrant.register(with: self)'
-              if anchor not in source:
-                  raise RuntimeError('Unable to locate Flutter plugin registration')
-              source = source.replace(anchor, anchor + '\n    application.registerForRemoteNotifications()', 1)
+              import re
+              # Flutter 3.38+ may register plugins in didInitializeImplicitFlutterEngine
+              # instead of didFinishLaunchingWithOptions.
+              pattern = r'(override\\s+func\\s+application\\s*\\(\\s*_\\s+application:\\s*UIApplication,\\s*didFinishLaunchingWithOptions[\\s\\S]*?\\)\\s*->\\s*Bool\\s*\\{)'
+              match = re.search(pattern, source)
+              if match:
+                  source = source[:match.end()] + '\n    application.registerForRemoteNotifications()' + source[match.end():]
+              else:
+                  anchor = 'class AppDelegate: FlutterAppDelegate {'
+                  if anchor not in source:
+                      raise RuntimeError('Unable to locate FlutterAppDelegate class')
+                  method = """
+            override func application(_ application: UIApplication,
+              didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+              application.registerForRemoteNotifications()
+              return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+            }
+          """
+                  source = source.replace(anchor, anchor + '\n' + method, 1)
           if 'didRegisterForRemoteNotificationsWithDeviceToken' not in source:
               pos = source.rfind('}')
               if pos < 0:
