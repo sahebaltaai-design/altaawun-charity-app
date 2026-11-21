@@ -2,9 +2,157 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.7
+ * Version: 1.2.8
  */
 defined('ABSPATH') || exit;
+
+add_action('admin_menu', function () {
+ add_menu_page('إعدادات التطبيق','إعدادات التطبيق','manage_options','altaawun-app-settings','altaawun_splash_settings_page','dashicons-smartphone',58);
+ add_submenu_page('altaawun-app-settings','شاشة الترحيب','شاشة الترحيب','manage_options','altaawun-app-settings','altaawun_splash_settings_page');
+}, 20);
+
+function altaawun_splash_defaults() {
+ return [
+  'image_id'=>0, 'fit'=>'cover', 'scale'=>1.0,
+  'align_x'=>0.0, 'align_y'=>-1.0, 'duration_ms'=>1500,
+  'updated_at'=>0,
+ ];
+}
+function altaawun_splash_settings() {
+ $saved=get_option('altaawun_app_splash',[]);
+ return wp_parse_args(is_array($saved)?$saved:[],altaawun_splash_defaults());
+}
+function altaawun_splash_image_url($id) {
+ $id=absint($id);
+ if (!$id || !wp_attachment_is_image($id)) return '';
+ $url=wp_get_attachment_url($id);
+ return $url && wp_parse_url($url,PHP_URL_SCHEME)==='https' ? esc_url_raw($url) : '';
+}
+function altaawun_splash_public_settings() {
+ $settings=altaawun_splash_settings();
+ return [
+  'image_url'=>altaawun_splash_image_url($settings['image_id']),
+  'fit'=>$settings['fit']==='contain'?'contain':'cover',
+  'scale'=>(float)$settings['scale'],
+  'align_x'=>(float)$settings['align_x'],
+  'align_y'=>(float)$settings['align_y'],
+  'duration_ms'=>(int)$settings['duration_ms'],
+  'updated_at'=>(int)$settings['updated_at'],
+ ];
+}
+add_action('rest_api_init',function() {
+ register_rest_route('altaawun/v1','/app-splash',[
+  'methods'=>WP_REST_Server::READABLE,
+  'permission_callback'=>'__return_true',
+  'callback'=>function() {
+   $response=rest_ensure_response(altaawun_splash_public_settings());
+   $response->header('Cache-Control','no-store, no-cache, must-revalidate, max-age=0');
+   return $response;
+  },
+ ]);
+});
+function altaawun_splash_settings_page() {
+ if (!current_user_can('manage_options')) return;
+ if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['altaawun_splash_action'])) {
+  check_admin_referer('altaawun_splash_save');
+  $action=sanitize_key(wp_unslash($_POST['altaawun_splash_action']));
+  if ($action==='reset') {
+   delete_option('altaawun_app_splash');
+   echo '<div class="notice notice-success"><p>تمت استعادة إعدادات الترحيب الافتراضية.</p></div>';
+  } elseif ($action==='save') {
+   $image_id=absint($_POST['image_id']??0);
+   if ($image_id && !altaawun_splash_image_url($image_id)) {
+    echo '<div class="notice notice-error"><p>اختر صورة صحيحة من مكتبة الوسائط بموقع الجمعية (HTTPS).</p></div>';
+   } else {
+    $fit=sanitize_key(wp_unslash($_POST['fit']??'cover'));
+    $scale=(float)($_POST['scale']??1);
+    $align_x=(float)($_POST['align_x']??0);
+    $align_y=(float)($_POST['align_y']??-1);
+    $duration=(int)($_POST['duration_ms']??1500);
+    update_option('altaawun_app_splash',[
+     'image_id'=>$image_id,
+     'fit'=>$fit==='contain'?'contain':'cover',
+     'scale'=>max(0.7,min(1.5,$scale)),
+     'align_x'=>max(-1,min(1,$align_x)),
+     'align_y'=>max(-1,min(1,$align_y)),
+     'duration_ms'=>max(700,min(8000,$duration)),
+     'updated_at'=>time(),
+    ],false);
+    echo '<div class="notice notice-success"><p>تم حفظ شاشة الترحيب. ستقرأ التطبيقات المحدثة هذه الإعدادات عند تشغيلها.</p></div>';
+   }
+  }
+ }
+ $cfg=altaawun_splash_settings();
+ $url=altaawun_splash_image_url($cfg['image_id']);
+ wp_enqueue_media();
+ echo '<div class="wrap" dir="rtl"><h1>إعدادات التطبيق ← شاشة الترحيب</h1>';
+ echo '<p>تحكم بصورة الترحيب وظهورها على أندرويد وآيفون من هنا دون تعديل الكود. التطبيق الجديد يعرض الصورة المخزنة إذا تعذر الاتصال بالموقع.</p>';
+ echo '<form method="post" id="altaawun-splash-form">';
+ wp_nonce_field('altaawun_splash_save');
+ echo '<input type="hidden" name="image_id" id="altaawun-splash-image-id" value="'.esc_attr($cfg['image_id']).'">';
+ echo '<p><button type="button" class="button button-primary" id="altaawun-splash-choose">اختيار / رفع صورة من الوسائط</button> ';
+ echo '<button type="button" class="button" id="altaawun-splash-clear">استخدام صورة التطبيق الافتراضية</button></p>';
+ echo '<table class="form-table" role="presentation" style="max-width:760px"><tbody>';
+ echo '<tr><th><label for="altaawun-splash-fit">طريقة العرض</label></th><td><select id="altaawun-splash-fit" name="fit">';
+ foreach (['cover'=>'ملء الشاشة — قد تُقص أطراف الصورة','contain'=>'إظهار الصورة كاملة — قد تظهر هوامش'] as $value=>$label)
+  echo '<option value="'.esc_attr($value).'" '.selected($cfg['fit'],$value,false).'>'.esc_html($label).'</option>';
+ echo '</select></td></tr>';
+ echo '<tr><th><label for="altaawun-splash-scale">حجم الصورة</label></th><td><input type="range" id="altaawun-splash-scale" name="scale" min=".7" max="1.5" step=".05" value="'.esc_attr($cfg['scale']).'"> <output id="altaawun-splash-scale-out"></output></td></tr>';
+ echo '<tr><th><label for="altaawun-splash-x">الموضع الأفقي</label></th><td><input type="range" id="altaawun-splash-x" name="align_x" min="-1" max="1" step=".1" value="'.esc_attr($cfg['align_x']).'"> <span>يسار — وسط — يمين</span></td></tr>';
+ echo '<tr><th><label for="altaawun-splash-y">الموضع العمودي</label></th><td><input type="range" id="altaawun-splash-y" name="align_y" min="-1" max="1" step=".1" value="'.esc_attr($cfg['align_y']).'"> <span>أعلى — وسط — أسفل</span></td></tr>';
+ echo '<tr><th><label for="altaawun-splash-duration">مدة الترحيب</label></th><td><input type="range" id="altaawun-splash-duration" name="duration_ms" min="700" max="8000" step="100" value="'.esc_attr($cfg['duration_ms']).'"> <output id="altaawun-splash-duration-out"></output></td></tr>';
+ echo '</tbody></table>';
+ echo '<p><button class="button button-primary button-large" type="submit" name="altaawun_splash_action" value="save">حفظ الإعدادات</button> ';
+ echo '<button class="button button-secondary" type="submit" name="altaawun_splash_action" value="reset" onclick="return confirm(\'استعادة صورة الترحيب الافتراضية؟\')">استعادة الافتراضي</button></p></form>';
+ echo '<h2>معاينة الهاتف (قبل الحفظ)</h2>';
+ echo '<div id="altaawun-splash-preview-frame" style="position:relative;width:300px;max-width:95%;height:600px;border:7px solid #333;border-radius:28px;overflow:hidden;background:#075c39;box-shadow:0 5px 18px #0003">';
+ echo '<img id="altaawun-splash-preview-image" src="'.esc_url($url).'" alt="معاينة شاشة الترحيب" style="display:'.($url?'block':'none').';width:100%;height:100%;object-fit:cover;object-position:center top;">';
+ echo '<div id="altaawun-splash-preview-default" style="display:'.($url?'none':'flex').';height:85%;align-items:center;justify-content:center;text-align:center;padding:16px;color:#fff;box-sizing:border-box">الصورة الافتراضية المحفوظة داخل التطبيق</div>';
+ echo '<div style="position:absolute;bottom:14px;left:12px;right:12px;padding:12px 5px;border:1px solid #efcf76;border-radius:14px;background:#003b1d;color:white;text-align:center;font-size:16px">معًا .. نصنع لهم مستقبلًا أفضل</div></div>';
+ echo '<p class="description">هذه معاينة تقريبية. قد تختلف الهوامش حسب أبعاد شاشة الهاتف. وضع «الصورة كاملة» يمنع قصّ الشعار.</p></div>';
+ ?>
+ <script>
+ jQuery(function($) {
+   var picker;
+   var img=$('#altaawun-splash-preview-image'), original=img.attr('src') || '';
+   function render() {
+     var source=img.attr('src');
+     var hasImage=!!source;
+     img.toggle(hasImage);
+     $('#altaawun-splash-preview-default').toggle(!hasImage);
+     var fit=$('#altaawun-splash-fit').val();
+     var x=parseFloat($('#altaawun-splash-x').val());
+     var y=parseFloat($('#altaawun-splash-y').val());
+     var scale=parseFloat($('#altaawun-splash-scale').val());
+     img.css({'object-fit':fit,'object-position':(50+x*50)+'% '+(50+y*50)+'%','transform':'scale('+scale+')'});
+     $('#altaawun-splash-scale-out').text(Math.round(scale*100)+'%');
+     $('#altaawun-splash-duration-out').text((parseInt($('#altaawun-splash-duration').val(),10)/1000).toFixed(1)+' ثانية');
+   }
+   $('#altaawun-splash-choose').on('click',function(e) {
+     e.preventDefault();
+     if(!picker) {
+       picker=wp.media({title:'اختيار صورة الترحيب',button:{text:'استخدام الصورة'},library:{type:'image'},multiple:false});
+       picker.on('select',function(){
+         var file=picker.state().get('selection').first().toJSON();
+         $('#altaawun-splash-image-id').val(file.id);
+         img.attr('src',file.url);
+         render();
+       });
+     }
+     picker.open();
+   });
+   $('#altaawun-splash-clear').on('click',function(){
+     $('#altaawun-splash-image-id').val('0');
+     img.attr('src','');
+     render();
+   });
+   $('#altaawun-splash-fit,#altaawun-splash-scale,#altaawun-splash-x,#altaawun-splash-y,#altaawun-splash-duration').on('input change',render);
+   render();
+ });
+ </script>
+ <?php
+}
+
 add_action('admin_menu', function () {
  add_menu_page('إشعارات الجمعية','إشعارات الجمعية','manage_options','altaawun-push','altaawun_push_page','dashicons-megaphone');
  add_submenu_page('altaawun-push','إدارة النغمات','إدارة النغمات','manage_options','altaawun-tones','altaawun_tones_page');
@@ -40,7 +188,7 @@ function altaawun_push_page() {
    'آخر إشعار يدوي: '.$label.$note.' — '.($last['time']??'')
   ).'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.7</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.8</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
