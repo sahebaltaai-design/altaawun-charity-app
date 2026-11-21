@@ -19,6 +19,8 @@ class SplashRemoteConfig {
 
   final String imageUrl;
   final BoxFit fit;
+  final bool preserveFullImage;
+  final bool showCaption;
   final double zoom;
   final double alignX;
   final double alignY;
@@ -27,7 +29,9 @@ class SplashRemoteConfig {
 
   const SplashRemoteConfig({
     this.imageUrl = '',
-    this.fit = BoxFit.cover,
+    this.fit = BoxFit.contain,
+    this.preserveFullImage = true,
+    this.showCaption = true,
     this.zoom = 1,
     this.alignX = 0,
     this.alignY = -1,
@@ -57,7 +61,11 @@ class SplashRemoteConfig {
         : '';
     return SplashRemoteConfig(
       imageUrl: imageUrl,
-      fit: payload['fit'] == 'contain' ? BoxFit.contain : BoxFit.cover,
+      fit: payload['fit'] == 'smart' || payload['fit'] == 'contain'
+          ? BoxFit.contain
+          : BoxFit.cover,
+      preserveFullImage: payload['fit'] == 'smart',
+      showCaption: payload['show_caption'] != false,
       zoom: _bound(payload['scale'], 1.0, 0.7, 1.5),
       alignX: _bound(payload['align_x'], 0, -1, 1),
       alignY: _bound(payload['align_y'], -1, -1, 1),
@@ -68,7 +76,9 @@ class SplashRemoteConfig {
 
   Map<String, dynamic> toJson() => {
         'image_url': imageUrl,
-        'fit': fit == BoxFit.contain ? 'contain' : 'cover',
+        'fit': preserveFullImage ? 'smart' :
+            fit == BoxFit.contain ? 'contain' : 'cover',
+        'show_caption': showCaption,
         'scale': zoom,
         'align_x': alignX,
         'align_y': alignY,
