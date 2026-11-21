@@ -18,14 +18,29 @@ jobs:
       - name: Validate WordPress plugin PHP
         run: |
           php -l wordpress-plugin/altaawun-notifications.php
-          grep -q 'Version: 1.2.9' wordpress-plugin/altaawun-notifications.php
-      - name: Package installable plugin ZIP
+          grep -q 'Version: 1.2.10' wordpress-plugin/altaawun-notifications.php
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install image support for default welcome preview
+        run: python -m pip install --quiet pillow
+      - name: Package installable plugin ZIP and matching default preview artwork
         run: |
-          mkdir -p dist/altaawun-notifications
+          mkdir -p dist/altaawun-notifications/assets
           cp wordpress-plugin/altaawun-notifications.php dist/altaawun-notifications/altaawun-notifications.php
+          python - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          image = Image.open('assets/welcome_background-2.png').convert('RGB')
+          top = round(image.height * 0.035)
+          bottom = round(image.height * 0.84)
+          cleaned = image.crop((0, top, image.width, bottom))
+          cleaned.save('dist/altaawun-notifications/assets/welcome_background-2.png', optimize=True)
+          print('WordPress default preview:', cleaned.size)
+          PY
           cd dist
-          zip -r altaawun-notifications-v1.2.9.zip altaawun-notifications
+          zip -r altaawun-notifications-v1.2.10.zip altaawun-notifications
       - uses: actions/upload-artifact@v4
         with:
-          name: altaawun-notifications-v1.2.9
-          path: dist/altaawun-notifications-v1.2.9.zip
+          name: altaawun-notifications-v1.2.10
+          path: dist/altaawun-notifications-v1.2.10.zip
