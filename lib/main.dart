@@ -967,6 +967,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         ),
       );
     });
+    // Ensure a frame is requested even when the tap arrives after startup.
+    WidgetsBinding.instance.scheduleFrame();
   }
 
   void _openNotificationData(Map<String, dynamic> data,
