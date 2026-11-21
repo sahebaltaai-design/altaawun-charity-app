@@ -8,7 +8,6 @@ import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -634,19 +633,14 @@ class _SplashScreenState extends State<SplashScreen> {
       body: LayoutBuilder(builder: (context, constraints) => Stack(
         fit: StackFit.expand,
         children: [
-          // Smart mode fills all uncovered screen areas with a softly blurred
-          // copy of the same approved image. The foreground is BoxFit.contain
-          // so the charity crest, text, school and children are never cropped.
-          if (_splashConfig.preserveFullImage)
-            Positioned.fill(child: ClipRect(child: ImageFiltered(
-              imageFilter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-              child: Transform.scale(
-                scale: 1.17,
-                child: _currentSplashImage(fit: BoxFit.cover),
-              ),
-            )))
-          else
-            const ColoredBox(color: deepGreen),
+          // Smart mode is a true edge-to-edge image fit within the safe area:
+          // no duplicated, blurred, or green letterbox bands behind the photo.
+          // The picture itself uses BoxFit.fill so every pixel remains visible.
+          ColoredBox(
+            color: _splashConfig.preserveFullImage
+                ? const Color(0xFF79C9EE)
+                : deepGreen,
+          ),
           SafeArea(
             top: true,
             bottom: false,
