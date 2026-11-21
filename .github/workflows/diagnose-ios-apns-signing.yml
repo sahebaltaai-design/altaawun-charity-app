@@ -87,17 +87,19 @@ jobs:
           if 'import UserNotifications' not in source:
               source = source.replace('import UIKit','import UIKit\nimport UserNotifications')
           if 'application.registerForRemoteNotifications()' not in source:
-              # Flutter templates may register plugins in the engine lifecycle
-              # instead of calling GeneratedPluginRegistrant in didFinishLaunching.
-              import re
-              registration = '''    UNUserNotificationCenter.current().delegate = self
-    application.registerForRemoteNotifications()
-'''
-              anchor = re.search(r'(?m)^([ \\t]*)return super\\.application\\(application, didFinishLaunchingWithOptions: launchOptions\\)', source)
-              if anchor:
-                  source = source[:anchor.start()] + registration + source[anchor.start():]
-              else:
-                  anchor = re.search(r'(?m)^([ \\t]*)return true\\s*
+              # Insert in didFinishLaunching; newer Flutter templates can omit
+              # the GeneratedPluginRegistrant call in AppDelegate.
+              registration = (
+                  '    UNUserNotificationCenter.current().delegate = self\\n'
+                  '    application.registerForRemoteNotifications()\\n'
+              )
+              anchor = 'return super.application(application, didFinishLaunchingWithOptions: launchOptions)'
+              if anchor not in source:
+                  anchor = 'return true'
+              assert anchor in source, 'Unable to locate didFinishLaunching return for APNs registration'
+              source = source.replace(anchor, registration + '    ' + anchor, 1)
+          delegate.write_text(source)
+          assert 'application.registerForRemoteNotifications()' in source
           PY
           ruby <<'RUBY'
           require 'xcodeproj'
