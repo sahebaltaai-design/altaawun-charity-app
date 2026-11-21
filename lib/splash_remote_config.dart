@@ -199,7 +199,7 @@ class SplashRemoteConfig {
     final response = await http.get(url, headers: {
       'Accept': 'application/json',
       'Cache-Control': 'no-cache',
-    }).timeout(const Duration(milliseconds: 1800));
+    }).timeout(const Duration(seconds: 6));
     if (response.statusCode != 200) return null;
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));
     if (decoded is! Map<String, dynamic>) return null;
