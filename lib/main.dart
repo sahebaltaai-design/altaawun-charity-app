@@ -653,7 +653,11 @@ class _SplashScreenState extends State<SplashScreen> {
             minimum: const EdgeInsets.only(top: 4),
             child: ClipRect(
               child: Transform.scale(
-                scale: _splashConfig.zoom,
+                // Smart mode guarantees the entire foreground remains visible;
+                // scaling above 100% would reintroduce unwanted crop.
+                scale: _splashConfig.preserveFullImage
+                    ? _splashConfig.zoom.clamp(0.7, 1.0).toDouble()
+                    : _splashConfig.zoom,
                 alignment: _splashConfig.alignment,
                 child: _currentSplashImage(),
               ),
