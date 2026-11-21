@@ -2,7 +2,7 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.10
+ * Version: 1.2.11
  */
 defined('ABSPATH') || exit;
 
@@ -79,7 +79,7 @@ function altaawun_splash_settings_page() {
      'image_id'=>$image_id,
      'fit'=>in_array($fit,['smart','contain','cover'],true)?$fit:'smart',
      'show_caption'=>!empty($_POST['show_caption']),
-     'scale'=>max(0.7,min(1.5,$scale)),
+     'scale'=>max(0.7,min($fit==='smart'?1.0:1.5,$scale)),
      'align_x'=>max(-1,min(1,$align_x)),
      'align_y'=>max(-1,min(1,$align_y)),
      'duration_ms'=>max(700,min(8000,$duration)),
@@ -130,9 +130,15 @@ function altaawun_splash_settings_page() {
      var fit=$('#altaawun-splash-fit').val();
      var x=parseFloat($('#altaawun-splash-x').val());
      var y=parseFloat($('#altaawun-splash-y').val());
-     var scale=parseFloat($('#altaawun-splash-scale').val());
-     var origin=(50+x*50)+'% '+(50+y*50)+'%';
      var smart=fit==='smart';
+     var scaleControl=$('#altaawun-splash-scale');
+     scaleControl.attr('max',smart?'1':'1.5');
+     var scale=parseFloat(scaleControl.val());
+     if (smart && scale>1) {
+       scale=1;
+       scaleControl.val('1');
+     }
+     var origin=(50+x*50)+'% '+(50+y*50)+'%';
      img.css({'object-fit':smart?'contain':fit,'object-position':origin,'transform-origin':origin,'transform':'scale('+scale+')'});
      $('#altaawun-splash-preview-background').css('background-image','url("'+source.replace(/"/g,'')+'")').toggle(smart);
      $('#altaawun-splash-caption-preview').toggle($('#altaawun-splash-caption-toggle').is(':checked'));
@@ -199,7 +205,7 @@ function altaawun_push_page() {
    'آخر إشعار يدوي: '.$label.$note.' — '.($last['time']??'')
   ).'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.10</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.11</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
