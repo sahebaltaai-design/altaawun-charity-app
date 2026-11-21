@@ -8,6 +8,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -581,25 +582,25 @@ class _SplashScreenState extends State<SplashScreen> {
     }
   }
 
-  Widget _bundledSplash() => Image.asset(
+  Widget _bundledSplash({BoxFit? fit}) => Image.asset(
     'assets/welcome_background-2.png',
-    fit: _splashConfig.fit,
+    fit: fit ?? _splashConfig.fit,
     alignment: _splashConfig.alignment,
     width: double.infinity,
     height: double.infinity,
     errorBuilder: (_, __, ___) => const SizedBox.shrink(),
   );
 
-  Widget _currentSplashImage() {
+  Widget _currentSplashImage({BoxFit? fit}) {
     final file = _cachedSplashImage;
     if (_splashConfig.imageUrl.isEmpty || file == null) {
-      return _bundledSplash();
+      return _bundledSplash(fit: fit);
     }
     // The approved WordPress image lives on the phone. It still appears
     // immediately when the site is down, even after a device restart.
     return Image.file(
       file,
-      fit: _splashConfig.fit,
+      fit: fit ?? _splashConfig.fit,
       alignment: _splashConfig.alignment,
       width: double.infinity,
       height: double.infinity,
@@ -623,26 +624,42 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: LayoutBuilder(builder: (context, constraints) => Stack(
-      fit: StackFit.expand,
-      children: [
-        const ColoredBox(color: deepGreen),
-        // All screen sizes use the same image and WordPress-selected fitting.
-        // The status bar is excluded; the caption stays separate and readable.
-        SafeArea(
-          top: true,
-          bottom: false,
-          minimum: const EdgeInsets.only(top: 4),
-          child: ClipRect(
-            child: Transform.scale(
-              scale: _splashConfig.zoom,
-              alignment: _splashConfig.alignment,
-              child: _currentSplashImage(),
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+    value: const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+    ),
+    child: Scaffold(
+      body: LayoutBuilder(builder: (context, constraints) => Stack(
+        fit: StackFit.expand,
+        children: [
+          // Smart mode fills all uncovered screen areas with a softly blurred
+          // copy of the same approved image. The foreground is BoxFit.contain
+          // so the charity crest, text, school and children are never cropped.
+          if (_splashConfig.preserveFullImage)
+            Positioned.fill(child: ClipRect(child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+              child: Transform.scale(
+                scale: 1.17,
+                child: _currentSplashImage(fit: BoxFit.cover),
+              ),
+            )))
+          else
+            const ColoredBox(color: deepGreen),
+          SafeArea(
+            top: true,
+            bottom: false,
+            minimum: const EdgeInsets.only(top: 4),
+            child: ClipRect(
+              child: Transform.scale(
+                scale: _splashConfig.zoom,
+                alignment: _splashConfig.alignment,
+                child: _currentSplashImage(),
+              ),
             ),
           ),
-        ),
-        Positioned(
+          if (_splashConfig.showCaption) Positioned(
           left: 16,
           right: 16,
           bottom: 16,
@@ -674,8 +691,9 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
           ),
         ),
-      ],
-    )),
+        ],
+      )),
+    ),
   );
 }
 
