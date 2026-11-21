@@ -2,7 +2,7 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.3
+ * Version: 1.2.4
  */
 defined('ABSPATH') || exit;
 add_action('admin_menu', function () {
@@ -19,75 +19,126 @@ function altaawun_push_page() {
   echo '<div class="notice notice-info"><p>تمت معالجة إعدادات Firebase.</p></div>';
  }
  if (isset($_POST['altaawun_send']) && check_admin_referer('altaawun_push_send')) {
-  $result=altaawun_push_send(sanitize_text_field(wp_unslash($_POST['title'] ?? '')),sanitize_textarea_field(wp_unslash($_POST['body'] ?? '')),'',sanitize_key(wp_unslash($_POST['notification_type'] ?? 'normal')));
-  echo '<div class="notice notice-info"><p>'.esc_html(is_wp_error($result)?$result->get_error_message():'تم قبول الإشعار من Firebase').'</p></div>';
+  $result=altaawun_push_send(sanitize_text_field(wp_unslash($_POST['title'] ?? '')),sanitize_textarea_field(wp_unslash($_POST['body'] ?? '')),esc_url_raw(wp_unslash($_POST['url'] ?? '')),sanitize_key(wp_unslash($_POST['notification_type'] ?? 'normal')));
+  echo '<div class="notice notice-info"><p>'.esc_html(is_wp_error($result)?$result->get_error_message():'قبل Firebase الإشعار للقنوات المستهدفة؛ تحقق من وصوله للجهاز').'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية</h1><p>الموضوع: altaawun_updates</p>';
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.4</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
  echo '<h2>إرسال إشعار يدوي</h2><form method="post">';
  wp_nonce_field('altaawun_push_send');
  echo '<p><input name="title" required maxlength="120" placeholder="عنوان الإشعار" class="regular-text"></p><p><textarea name="body" required maxlength="1000" placeholder="نص الإشعار" rows="4" style="width:90%"></textarea></p>';
+ echo '<p><input type="url" name="url" placeholder="رابط الخبر HTTPS (اختياري)" style="width:90%;direction:ltr"></p>';
  echo '<p><label>نوع الإشعار <select name="notification_type"><option value="normal">عادي</option><option value="urgent">عاجل</option></select></label></p>';
  echo '<button class="button button-primary" name="altaawun_send">إرسال الإشعار</button></form><p>يُرسل إشعار تلقائي عند نشر مقال أو منتج جديد لأول مرة.</p></div>';
 }
-function altaawun_push_send($title,$body,$url='',$type='normal') {
+function altaawun_push_topics() {
+ $result=['altaawun_updates'=>'altaawun_normal_v1'];
+ foreach (['urgent','news','soft','default'] as $tone)
+  foreach (['vibrate','silent'] as $mode)
+   $result['altaawun_tone_'.$tone.'_'.$mode]='altaawun_tone_v2_'.$tone.'_'.$mode;
+ return $result;
+}
+function altaawun_push_send($title,$body,$url='',$type='normal',$post_id=0) {
  $a=json_decode(get_option('altaawun_push_credentials',''),true);
  if (empty($a['private_key'])||empty($a['client_email'])||empty($a['project_id'])) return new WP_Error('config','أدخل ملف Service Account أولاً.');
  if (!$title||!$body) return new WP_Error('empty','العنوان والنص مطلوبان.');
+ $url=trim((string)$url);
+ if ($url) {
+  $uri=wp_parse_url($url);
+  if (!$uri || strtolower($uri['scheme']??'')!=='https' || empty($uri['host']) || !empty($uri['user']) || !empty($uri['pass']))
+   return new WP_Error('url','رابط الخبر يجب أن يكون HTTPS صالحًا.');
+ }
  $now=time();
  $b64=function($s){return rtrim(strtr(base64_encode($s),'+/','-_'),'=');};
  $jwt=$b64(wp_json_encode(['alg'=>'RS256','typ'=>'JWT'])).'.'.$b64(wp_json_encode(['iss'=>$a['client_email'],'scope'=>'https://www.googleapis.com/auth/firebase.messaging','aud'=>'https://oauth2.googleapis.com/token','iat'=>$now,'exp'=>$now+3500]));
  if (!openssl_sign($jwt,$signature,$a['private_key'],OPENSSL_ALGO_SHA256)) return new WP_Error('sign','تعذر توقيع Firebase JWT.');
- $tokenResponse=wp_remote_post('https://oauth2.googleapis.com/token',['timeout'=>20,'body'=>['grant_type'=>'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion'=>$jwt.'.'.$b64($signature)]]);
- if (is_wp_error($tokenResponse)) return $tokenResponse;
- $token=json_decode(wp_remote_retrieve_body($tokenResponse),true)['access_token']??'';
+ $auth=wp_remote_post('https://oauth2.googleapis.com/token',['timeout'=>20,'body'=>['grant_type'=>'urn:ietf:params:oauth:grant-type:jwt-bearer','assertion'=>$jwt.'.'.$b64($signature)]]);
+ if (is_wp_error($auth)) return $auth;
+ $token=json_decode(wp_remote_retrieve_body($auth),true)['access_token']??'';
  if (!$token) return new WP_Error('oauth','تعذر الحصول على رمز Firebase.');
- $type=$type==='urgent'?'urgent':'normal';
- $channel=$type==='urgent'?'altaawun_urgent_v1':'altaawun_normal_v1';
- $message=['topic'=>'altaawun_updates','notification'=>['title'=>mb_substr($title,0,120),'body'=>mb_substr($body,0,1000)],'android'=>['priority'=>'high','notification'=>['channel_id'=>$channel,'default_vibrate_timings'=>true]]];
- $message['data']=['type'=>$type];
- if ($url) $message['data']['url']=$url;
- $response=wp_remote_post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($a['project_id']).'/messages:send',['timeout'=>20,'headers'=>['Authorization'=>'Bearer '.$token,'Content-Type'=>'application/json'],'body'=>wp_json_encode(['message'=>$message])]);
- if (is_wp_error($response)) return $response;
- if (wp_remote_retrieve_response_code($response)!==200) return new WP_Error('fcm','Firebase HTTP '.wp_remote_retrieve_response_code($response).' '.substr(wp_remote_retrieve_body($response),0,150));
+ $sent=$post_id>0?get_post_meta($post_id,'_altaawun_push_topics_sent',true):[];
+ if (!is_array($sent)) $sent=[];
+ $errors=[];
+ foreach (altaawun_push_topics() as $topic=>$channel) {
+  if (in_array($topic,$sent,true)) continue;
+  $data=['type'=>$type==='urgent'?'urgent':'normal','screen'=>'news'];
+  if ($url) $data['url']=$url;
+  if ($post_id>0) $data['post_id']=(string)$post_id;
+  $message=[
+   'topic'=>$topic,
+   'notification'=>['title'=>mb_substr($title,0,120),'body'=>mb_substr($body,0,1000)],
+   'data'=>$data,
+   'android'=>['priority'=>'high','notification'=>['channel_id'=>$channel]],
+   'apns'=>['headers'=>['apns-push-type'=>'alert','apns-priority'=>'10'],'payload'=>['aps'=>['sound'=>'default']]]
+  ];
+  $response=wp_remote_post('https://fcm.googleapis.com/v1/projects/'.rawurlencode($a['project_id']).'/messages:send',['timeout'=>20,'headers'=>['Authorization'=>'Bearer '.$token,'Content-Type'=>'application/json'],'body'=>wp_json_encode(['message'=>$message])]);
+  if (is_wp_error($response)) $errors[]=$topic.': '.$response->get_error_message();
+  elseif (wp_remote_retrieve_response_code($response)!==200) $errors[]=$topic.': HTTP '.wp_remote_retrieve_response_code($response).' '.mb_substr(wp_strip_all_tags(wp_remote_retrieve_body($response)),0,160);
+  else {
+   $sent[]=$topic;
+   if ($post_id>0) update_post_meta($post_id,'_altaawun_push_topics_sent',$sent);
+  }
+ }
+ if ($errors) return new WP_Error('fcm','فشل الإرسال إلى '.count($errors).' قنوات؛ '.implode(' | ',array_slice($errors,0,2)));
  return true;
 }
+function altaawun_push_queue_post($id) {
+ $post=get_post($id);
+ if (!$post||!in_array($post->post_type,['post','product'],true)||$post->post_status!=='publish'||get_post_meta($id,'_altaawun_push_sent',true)) return;
+ if (!wp_next_scheduled('altaawun_send_post_notification',[$id]))
+  wp_schedule_single_event(time(),'altaawun_send_post_notification',[$id]);
+ // Trigger background cron immediately, without delaying the post editor.
+ if (!wp_doing_cron()) add_action('shutdown','altaawun_push_kick_cron',100);
+}
+function altaawun_push_kick_cron() {
+ if (!wp_doing_cron() && function_exists('spawn_cron')) spawn_cron(time());
+}
+add_action('wp_after_insert_post',function($post,$update,$post_before){
+ if (!$post instanceof WP_Post || !in_array($post->post_type,['post','product'],true)||$post->post_status!=='publish') return;
+ if ($post_before instanceof WP_Post && $post_before->post_status==='publish') return;
+ altaawun_push_queue_post($post->ID);
+},20,3);
 add_action('transition_post_status',function($new,$old,$post){
- if (!in_array($post->post_type,['post','product'],true)||$new!=='publish'||$old==='publish'||get_post_meta($post->ID,'_altaawun_push_sent',true)) return;
- // Delay sending until WordPress finishes saving post metadata and content.
- if (!wp_next_scheduled('altaawun_send_post_notification',[$post->ID]))
-  wp_schedule_single_event(time()+30,'altaawun_send_post_notification',[$post->ID]);
-},10,3);
-// WooCommerce can create products directly with publish status; cover that path as well.
+ if ($new!=='publish'||$old==='publish'||!$post instanceof WP_Post) return;
+ altaawun_push_queue_post($post->ID);
+},30,3);
 function altaawun_queue_new_product_notification($id) {
  $post=get_post($id);
  if (!$post||$post->post_type!=='product'||$post->post_status!=='publish'||get_post_meta($id,'_altaawun_push_sent',true)) return;
  $created=get_post_time('U',true,$post);
- if (!$created||time()-$created>600) return; // Never alert for ordinary edits to older products.
- if (!wp_next_scheduled('altaawun_send_post_notification',[$id]))
-  wp_schedule_single_event(time()+30,'altaawun_send_post_notification',[$id]);
+ if (!$created||time()-$created>600) return;
+ altaawun_push_queue_post($id);
 }
 add_action('save_post_product','altaawun_queue_new_product_notification',20,1);
 add_action('woocommerce_new_product','altaawun_queue_new_product_notification',20,1);
 add_action('altaawun_send_post_notification',function($id){
  $post=get_post($id);
  if (!$post||!in_array($post->post_type,['post','product'],true)||$post->post_status!=='publish'||get_post_meta($id,'_altaawun_push_sent',true)) return;
+ $lock=(int)get_post_meta($id,'_altaawun_push_lock',true);
+ if ($lock && time()-$lock>600) delete_post_meta($id,'_altaawun_push_lock');
  if (!add_post_meta($id,'_altaawun_push_lock',time(),true)) return;
- $type=get_post_meta($id,'_altaawun_notification_type',true)==='urgent'?'urgent':'normal';
- $body=wp_strip_all_tags(wp_trim_words($post->post_content,28,'…'));
- if (!$body) $body=get_the_title($post);
- $result=altaawun_push_send(get_the_title($post),$body,get_permalink($post),$type);
- if (is_wp_error($result)) {
-  update_post_meta($id,'_altaawun_push_last_error',$result->get_error_message());
+ try {
+  $type=get_post_meta($id,'_altaawun_notification_type',true)==='urgent'?'urgent':'normal';
+  $body=wp_strip_all_tags(wp_trim_words($post->post_content,28,'…'));
+  if (!$body) $body=get_the_title($post);
+  $result=altaawun_push_send(get_the_title($post),$body,get_permalink($post),$type,$id);
   update_post_meta($id,'_altaawun_push_last_attempt',current_time('mysql'));
- } else {
-  update_post_meta($id,'_altaawun_push_sent',1);
-  delete_post_meta($id,'_altaawun_push_last_error');
-  update_post_meta($id,'_altaawun_push_last_attempt',current_time('mysql'));
+  if (is_wp_error($result)) {
+   update_post_meta($id,'_altaawun_push_last_error',$result->get_error_message());
+   $attempts=(int)get_post_meta($id,'_altaawun_push_attempts',true)+1;
+   update_post_meta($id,'_altaawun_push_attempts',$attempts);
+   if ($attempts<8 && !wp_next_scheduled('altaawun_send_post_notification',[$id]))
+    wp_schedule_single_event(time()+min(3600,60*(2**($attempts-1))),'altaawun_send_post_notification',[$id]);
+  } else {
+   update_post_meta($id,'_altaawun_push_sent',1);
+   delete_post_meta($id,'_altaawun_push_last_error');
+   delete_post_meta($id,'_altaawun_push_attempts');
+  }
+ } finally {
+  delete_post_meta($id,'_altaawun_push_lock');
  }
- delete_post_meta($id,'_altaawun_push_lock');
 });
 add_action('admin_notices',function(){
  if (!current_user_can('edit_posts')||!isset($_GET['post'])) return;
@@ -98,7 +149,6 @@ add_action('admin_notices',function(){
 });
 add_action('add_meta_boxes',function(){add_meta_box('altaawun_push_type','نوع إشعار الجمعية',function($post){wp_nonce_field('altaawun_push_type','altaawun_push_type_nonce');$v=get_post_meta($post->ID,'_altaawun_notification_type',true);echo '<label><select name="altaawun_notification_type"><option value="normal">عادي</option><option value="urgent" '.selected($v,'urgent',false).'>عاجل</option></select></label>';},['post','product'],'side');});
 add_action('save_post',function($id){if (!in_array(get_post_type($id),['post','product'],true)||!isset($_POST['altaawun_push_type_nonce'])||!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['altaawun_push_type_nonce'])),'altaawun_push_type')||!current_user_can('edit_post',$id)||wp_is_post_revision($id))return;update_post_meta($id,'_altaawun_notification_type',sanitize_key(wp_unslash($_POST['altaawun_notification_type']??'normal'))==='urgent'?'urgent':'normal');});
-
 function altaawun_tones_page() {
  if (!current_user_can('manage_options')) return;
  $tones=get_option('altaawun_tones',[]);
