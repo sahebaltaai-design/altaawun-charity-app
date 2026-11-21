@@ -61,9 +61,14 @@ class SplashRemoteConfig {
         : '';
     return SplashRemoteConfig(
       imageUrl: imageUrl,
-      fit: payload['fit'] == 'smart' || payload['fit'] == 'contain'
-          ? BoxFit.contain
-          : BoxFit.cover,
+      // Smart mode must fill the entire available rectangle without cropping.
+      // Flutter BoxFit.fill preserves all pixels but may stretch proportions
+      // slightly on devices with different screen aspect ratios.
+      fit: payload['fit'] == 'smart'
+          ? BoxFit.fill
+          : payload['fit'] == 'contain'
+              ? BoxFit.contain
+              : BoxFit.cover,
       preserveFullImage: payload['fit'] == 'smart',
       showCaption: payload['show_caption'] != false,
       zoom: _bound(payload['scale'], 1.0, 0.7, 1.5),
