@@ -2,7 +2,7 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.4
+ * Version: 1.2.5
  */
 defined('ABSPATH') || exit;
 add_action('admin_menu', function () {
@@ -19,10 +19,28 @@ function altaawun_push_page() {
   echo '<div class="notice notice-info"><p>تمت معالجة إعدادات Firebase.</p></div>';
  }
  if (isset($_POST['altaawun_send']) && check_admin_referer('altaawun_push_send')) {
-  $result=altaawun_push_send(sanitize_text_field(wp_unslash($_POST['title'] ?? '')),sanitize_textarea_field(wp_unslash($_POST['body'] ?? '')),esc_url_raw(wp_unslash($_POST['url'] ?? '')),sanitize_key(wp_unslash($_POST['notification_type'] ?? 'normal')));
-  echo '<div class="notice notice-info"><p>'.esc_html(is_wp_error($result)?$result->get_error_message():'قبل Firebase الإشعار للقنوات المستهدفة؛ تحقق من وصوله للجهاز').'</p></div>';
+  // Nine FCM topic calls in an admin HTTP request can exceed PHP/proxy timeouts.
+  // Queue the job and let WP-Cron perform the same fan-out in the background.
+  $title=sanitize_text_field(wp_unslash($_POST['title'] ?? ''));
+  $body=sanitize_textarea_field(wp_unslash($_POST['body'] ?? ''));
+  $url=esc_url_raw(wp_unslash($_POST['url'] ?? ''));
+  $type=sanitize_key(wp_unslash($_POST['notification_type'] ?? 'normal'));
+  $result=altaawun_queue_manual_notification($title,$body,$url,$type);
+  echo '<div class="notice notice-'.(is_wp_error($result)?'error':'success').'"><p>'.esc_html(
+   is_wp_error($result)?$result->get_error_message():'تم إدراج الإشعار اليدوي للإرسال. راقب حالة الإرسال أدناه؛ هذه الرسالة لا تعني أنه وصل للهاتف.'
+  ).'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.4</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
+ $last=get_option('altaawun_push_last_manual_status',[]);
+ if (is_array($last) && !empty($last['status'])) {
+  $names=['queued'=>'قيد الانتظار','sending'=>'جاري الإرسال','accepted'=>'قبله Firebase — تحقق من الهاتف','failed'=>'فشل الإرسال'];
+  $status=$last['status'];
+  $label=$names[$status]??'غير معروف';
+  $note=($status==='failed' && !empty($last['error'])) ? ': '.$last['error'] : '';
+  echo '<div class="notice notice-'.($status==='failed'?'error':'info').'"><p>'.esc_html(
+   'آخر إشعار يدوي: '.$label.$note.' — '.($last['time']??'')
+  ).'</p></div>';
+ }
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.5</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
@@ -33,6 +51,47 @@ function altaawun_push_page() {
  echo '<p><label>نوع الإشعار <select name="notification_type"><option value="normal">عادي</option><option value="urgent">عاجل</option></select></label></p>';
  echo '<button class="button button-primary" name="altaawun_send">إرسال الإشعار</button></form><p>يُرسل إشعار تلقائي عند نشر مقال أو منتج جديد لأول مرة.</p></div>';
 }
+/**
+ * Queue a manual notification, retaining one visible admin status.
+ * Avoids running nine sequential FCM HTTP calls inside a web admin request.
+ * Does not modify the automatic new-post publishing workflow.
+ */
+function altaawun_queue_manual_notification($title,$body,$url='',$type='normal') {
+ if (!get_option('altaawun_push_credentials','')) return new WP_Error('config','إعداد Firebase Service Account غير موجود.');
+ if (!$title||!$body) return new WP_Error('empty','العنوان والنص مطلوبان.');
+ if ($url) {
+  $uri=wp_parse_url($url);
+  if (!$uri || strtolower($uri['scheme']??'')!=='https' || empty($uri['host']) || !empty($uri['user']) || !empty($uri['pass']))
+   return new WP_Error('url','رابط الخبر يجب أن يكون HTTPS صالحًا.');
+ }
+ $id=wp_generate_uuid4();
+ $payload=['id'=>$id,'title'=>$title,'body'=>$body,'url'=>$url,'type'=>$type==='urgent'?'urgent':'normal','time'=>current_time('mysql')];
+ $key='altaawun_push_manual_job_'.$id;
+ add_option($key,$payload,'','no');
+ $scheduled=wp_schedule_single_event(time(),'altaawun_push_manual_send_job',[$id],true);
+ if (is_wp_error($scheduled) || !$scheduled) {
+  delete_option($key);
+  return new WP_Error('schedule','تعذر جدولة الإشعار اليدوي. تحقق من عمل WP-Cron.');
+ }
+ update_option('altaawun_push_last_manual_status',['id'=>$id,'status'=>'queued','time'=>current_time('mysql')],false);
+ if (!wp_doing_cron()) add_action('shutdown','altaawun_push_kick_cron',100);
+ return true;
+}
+add_action('altaawun_push_manual_send_job',function($id){
+ $key='altaawun_push_manual_job_'.$id;
+ $job=get_option($key,[]);
+ if (!is_array($job) || ($job['id']??'')!==$id) return;
+ $status=get_option('altaawun_push_last_manual_status',[]);
+ $is_current=is_array($status) && ($status['id']??'')===$id;
+ if ($is_current) update_option('altaawun_push_last_manual_status',['id'=>$id,'status'=>'sending','time'=>current_time('mysql')],false);
+ $result=altaawun_push_send($job['title'],$job['body'],$job['url'],$job['type']);
+ if ($is_current) update_option('altaawun_push_last_manual_status',[
+  'id'=>$id,'status'=>is_wp_error($result)?'failed':'accepted',
+  'error'=>is_wp_error($result)?$result->get_error_message():'',
+  'time'=>current_time('mysql')
+ ],false);
+ delete_option($key);
+},10,1);
 function altaawun_push_topics() {
  $result=['altaawun_updates'=>'altaawun_normal_v1'];
  foreach (['urgent','news','soft','default'] as $tone)
