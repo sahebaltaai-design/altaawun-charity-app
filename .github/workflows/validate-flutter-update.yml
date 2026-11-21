@@ -17,5 +17,7 @@ jobs:
       - run: flutter pub get
       - name: Analyze update service
         run: flutter analyze --no-fatal-infos lib/app_update_service.dart
+      - name: Analyze app notification navigation
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/main.dart
       - name: Validate WordPress PHP
         run: php -l wordpress/altaawun-app-updates/altaawun-app-updates.php
