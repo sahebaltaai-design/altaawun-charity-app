@@ -90,8 +90,8 @@ jobs:
               # Insert in didFinishLaunching; newer Flutter templates can omit
               # the GeneratedPluginRegistrant call in AppDelegate.
               registration = (
-                  '    UNUserNotificationCenter.current().delegate = self\\n'
-                  '    application.registerForRemoteNotifications()\\n'
+                  '    UNUserNotificationCenter.current().delegate = self\n'
+                  '    application.registerForRemoteNotifications()\n'
               )
               anchor = 'return super.application(application, didFinishLaunchingWithOptions: launchOptions)'
               if anchor not in source:
