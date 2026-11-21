@@ -172,14 +172,13 @@ jobs:
           from pathlib import Path
           p = Path('assets/welcome_background-2.png')
           image = Image.open(p).convert('RGB')
-          # The source is a phone screenshot: 3.5% at the top is its old
-          # status bar and ~16% at the bottom is empty green background.
-          # Keep ALL the logo, Arabic text, school, children and flag.
-          # Cropping that unused footer (rather than compressing the entire
-          # picture into the original dimensions) lets BoxFit.cover fill
-          # the actual phone screen without distorting the central artwork.
+          # Remove the old captured phone status bar. Keep most of the
+          # built-in green footer to provide a natural area for the caption.
+          # This yields an almost phone-sized aspect ratio, requiring only
+          # mild stretching in the no-crop smart-fit mode. Never crop the
+          # crest, charity name, school, pupils or colored lower ribbon.
           top = round(image.height * 0.035)
-          bottom = round(image.height * 0.84)
+          bottom = round(image.height * 0.94)
           if bottom <= top or bottom > image.height:
               raise SystemExit('Unexpected source splash dimensions')
           clean = image.crop((0, top, image.width, bottom))
