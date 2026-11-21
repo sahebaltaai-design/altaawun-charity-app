@@ -554,17 +554,17 @@ class _SplashScreenState extends State<SplashScreen> {
       fit: StackFit.expand,
       children: [
         const ColoredBox(color: deepGreen),
-        // Preserve the full artwork and logo without stretching or cropping
-        // on phones with different aspect ratios.
-        // Do not draw the top of the charity logo underneath the status bar.
-        // The entire welcome artwork is scaled inside the safe display bounds.
+        // The source asset has its unused green footer removed at build time.
+        // Cover fills the phone while preserving image proportions and showing
+        // the full central crest; only thin outside edges may be cropped.
+        // Keep the status bar unobstructed by the artwork.
         SafeArea(
           top: true,
           bottom: false,
-          minimum: const EdgeInsets.only(top: 12),
+          minimum: const EdgeInsets.only(top: 4),
           child: Image.asset(
             'assets/welcome_background-2.png',
-            fit: BoxFit.contain,
+            fit: BoxFit.cover,
             alignment: Alignment.topCenter,
             errorBuilder: (_, __, ___) => const SizedBox.shrink(),
           ),
