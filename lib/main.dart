@@ -1,4 +1,5 @@
 import 'app_update_service.dart';
+import 'splash_remote_config.dart';
 import 'quick_donation_widget.dart';
 import 'charity_about_content.dart';
 import 'charity_voice_assistant.dart';
@@ -524,13 +525,73 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   Timer? _autoEnterTimer;
   bool _entering = false;
+  SplashRemoteConfig _splashConfig = const SplashRemoteConfig();
+  late final DateTime _splashStartedAt;
 
   @override
   void initState() {
     super.initState();
-    // Show the original welcome artwork for a moment, then enter without a tap.
-    // CharityShell will handle a pending notification after this transition.
-    _autoEnterTimer = Timer(const Duration(milliseconds: 1500), _enterApp);
+    _splashStartedAt = DateTime.now();
+    // Start immediately with the safe bundled artwork. WordPress changes
+    // update the splash screen on next launch (or this launch if fetched fast).
+    _rescheduleAutoEnter(_splashConfig.durationMs);
+    unawaited(_loadSplashVisualSettings());
+  }
+
+  void _rescheduleAutoEnter(int requestedDurationMs) {
+    if (!mounted || _entering) return;
+    _autoEnterTimer?.cancel();
+    final elapsed = DateTime.now().difference(_splashStartedAt).inMilliseconds;
+    final remaining = (requestedDurationMs - elapsed).clamp(100, 8000).toInt();
+    _autoEnterTimer = Timer(Duration(milliseconds: remaining), _enterApp);
+  }
+
+  Future<void> _loadSplashVisualSettings() async {
+    try {
+      final cached = await SplashRemoteConfig.cached();
+      if (cached != null && mounted && !_entering) {
+        setState(() => _splashConfig = cached);
+        _rescheduleAutoEnter(cached.durationMs);
+      }
+    } catch (error) {
+      debugPrint('Splash cached settings unavailable: $error');
+    }
+    try {
+      // Public read-only configuration, not an authenticated account page.
+      // A short timeout means offline users can still enter quickly.
+      final fresh = await SplashRemoteConfig.refresh();
+      if (fresh != null && mounted && !_entering) {
+        setState(() => _splashConfig = fresh);
+        _rescheduleAutoEnter(fresh.durationMs);
+      }
+    } catch (error) {
+      debugPrint('Splash WordPress settings unavailable: $error');
+    }
+  }
+
+  Widget _bundledSplash() => Image.asset(
+    'assets/welcome_background-2.png',
+    fit: _splashConfig.fit,
+    alignment: _splashConfig.alignment,
+    width: double.infinity,
+    height: double.infinity,
+    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+  );
+
+  Widget _currentSplashImage() {
+    final url = _splashConfig.imageUrlWithRevision;
+    if (url.isEmpty) return _bundledSplash();
+    return Image.network(
+      url,
+      fit: _splashConfig.fit,
+      alignment: _splashConfig.alignment,
+      width: double.infinity,
+      height: double.infinity,
+      // Show the bundled design until the image from WordPress is ready.
+      loadingBuilder: (context, child, loading) =>
+          loading == null ? child : _bundledSplash(),
+      errorBuilder: (_, __, ___) => _bundledSplash(),
+    );
   }
 
   void _enterApp() {
@@ -554,19 +615,18 @@ class _SplashScreenState extends State<SplashScreen> {
       fit: StackFit.expand,
       children: [
         const ColoredBox(color: deepGreen),
-        // The source asset has its unused green footer removed at build time.
-        // Cover fills the phone while preserving image proportions and showing
-        // the full central crest; only thin outside edges may be cropped.
-        // Keep the status bar unobstructed by the artwork.
+        // All screen sizes use the same image and WordPress-selected fitting.
+        // The status bar is excluded; the caption stays separate and readable.
         SafeArea(
           top: true,
           bottom: false,
           minimum: const EdgeInsets.only(top: 4),
-          child: Image.asset(
-            'assets/welcome_background-2.png',
-            fit: BoxFit.cover,
-            alignment: Alignment.topCenter,
-            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          child: ClipRect(
+            child: Transform.scale(
+              scale: _splashConfig.zoom,
+              alignment: _splashConfig.alignment,
+              child: _currentSplashImage(),
+            ),
           ),
         ),
         Positioned(
