@@ -1,4 +1,5 @@
 import 'app_update_service.dart';
+import 'quick_donation_widget.dart';
 import 'charity_about_content.dart';
 import 'charity_voice_assistant.dart';
 import 'charity_account_page.dart';
@@ -1304,6 +1305,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Map<String, dynamic>? selectedItem;
   String? checkoutUrl;
   bool _isSlideDestination = false;
+  bool _quickDonationOpen = false;
   static const String _site = 'https://aytamaliraq.com';
 
   Future<void> _loadWordPressCategories({bool silent = false}) async {
@@ -1910,7 +1912,60 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
   }
 
-  void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; _isSlideDestination = false; });
+  void _openQuickDonation() {
+    if (defaultTargetPlatform == TargetPlatform.iOS) return;
+    setState(() {
+      page = 3;
+      customPage = null;
+      wpSelectedCategory = null;
+      selectedItem = null;
+      checkoutUrl = null;
+      _isSlideDestination = false;
+      _quickDonationOpen = true;
+    });
+  }
+
+  void _openQuickDonationCheckout(String url) {
+    if (defaultTargetPlatform == TargetPlatform.iOS) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https' ||
+        !['aytamaliraq.com', 'www.aytamaliraq.com'].contains(uri.host.toLowerCase()) ||
+        !uri.queryParameters.containsKey('altaawun_qd') ||
+        !uri.queryParameters.containsKey('qd_sig')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('تعذر فتح رابط الدفع المعتمد من موقع الجمعية.'),
+      ));
+      return;
+    }
+    setState(() {
+      checkoutUrl = url;
+      _isSlideDestination = false;
+      _cartRefreshKey++;
+    });
+  }
+
+  Widget _quickDonationPage() => ListView(
+    padding: const EdgeInsets.all(14),
+    children: [
+      TextButton.icon(
+        onPressed: () => go(3),
+        icon: const Icon(Icons.arrow_forward),
+        label: const Text('العودة إلى التبرعات والمساهمات'),
+      ),
+      const SizedBox(height: 8),
+      AltaawunQuickDonation(onCheckoutUrl: _openQuickDonationCheckout),
+    ],
+  );
+
+  void go(int value) => setState(() {
+    page = value;
+    customPage = null;
+    wpSelectedCategory = null;
+    selectedItem = null;
+    checkoutUrl = null;
+    _isSlideDestination = false;
+    _quickDonationOpen = false;
+  });
   @override
   Widget build(BuildContext context) => Scaffold(
     // Only the homepage header uses the approved horizontal arrangement.
@@ -2090,7 +2145,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     body: Stack(children: [
       IndexedStack(index: checkoutUrl == null ||
           (defaultTargetPlatform == TargetPlatform.iOS && !_isSlideDestination) ? 0 : 1, children: [
-      selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
+      selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : _quickDonationOpen ? _quickDonationPage() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
       if (defaultTargetPlatform != TargetPlatform.iOS || _isSlideDestination)
           _inAppCheckout() else const SizedBox.shrink(),
       ]),
@@ -2189,7 +2244,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         child: SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: () => go(3),
+            onPressed: _openQuickDonation,
             icon: const Icon(Icons.volunteer_activism_outlined, size: 25),
             label: const Padding(
               padding: EdgeInsets.symmetric(vertical: 11),
@@ -2631,11 +2686,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         if (defaultTargetPlatform == TargetPlatform.iOS) ...[
           const _IosDonationInformation(),
         ] else ...[
-          const Text('تبرع الآن', textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 23, color: deepGreen, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 9),
-          const Text('اختر مجال التبرع من الفئات المتاحة لإكمال التبرع بأمان داخل التطبيق.',
-            textAlign: TextAlign.center, style: TextStyle(fontSize: 14, height: 1.6)),
+          FilledButton.icon(
+            onPressed: _openQuickDonation,
+            icon: const Icon(Icons.volunteer_activism_outlined),
+            label: const Text('تبرع الآن — التبرع السريع'),
+          ),
           const SizedBox(height: 16),
           _donationCategories(),
         ],
