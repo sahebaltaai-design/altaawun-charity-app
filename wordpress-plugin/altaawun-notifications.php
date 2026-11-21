@@ -2,7 +2,7 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.12
+ * Version: 1.2.13
  */
 defined('ABSPATH') || exit;
 
@@ -205,7 +205,7 @@ function altaawun_push_page() {
    'آخر إشعار يدوي: '.$label.$note.' — '.($last['time']??'')
   ).'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.12</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.13</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
@@ -325,12 +325,19 @@ function altaawun_push_send($title,$body,$url='',$type='normal',$post_id=0,$rela
   if ($url) $data['url']=$url;
   if ($related_post_id>0) $data['post_id']=(string)$related_post_id;
   elseif ($post_id>0) $data['post_id']=(string)$post_id;
+  // iPhone uses the sound file bundled in its app, including when closed.
+  // The topic names match the same choice saved by Android/iOS settings.
+  $ios_sound='default';
+  if (preg_match('/^altaawun_tone_(urgent|news|soft|default)_(?:vibrate|silent)$/',$topic,$match)
+      && $match[1]!=='default')
+   $ios_sound='altaawun_'.$match[1].'.caf';
   $message=[
    'topic'=>$topic,
    'notification'=>['title'=>mb_substr($title,0,120),'body'=>mb_substr($body,0,1000)],
    'data'=>$data,
    'android'=>['priority'=>'high','notification'=>['channel_id'=>$channel]],
-   'apns'=>['headers'=>['apns-push-type'=>'alert','apns-priority'=>'10'],'payload'=>['aps'=>['sound'=>'default']]]
+   'apns'=>['headers'=>['apns-push-type'=>'alert','apns-priority'=>'10'],
+     'payload'=>['aps'=>['sound'=>$ios_sound]]]
   ];
   // Manual notifications can dispatch all tone topics concurrently.
   // Keep the existing, working automatic-post send path unchanged.
