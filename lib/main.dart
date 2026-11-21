@@ -2130,6 +2130,22 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                         ),
                       ),
                     ),
+                    // The custom homepage AppBar must also expose the cart.
+                    // Previously only the secondary AppBar had this action.
+                    if (defaultTargetPlatform != TargetPlatform.iOS)
+                      IconButton(
+                        tooltip: 'سلة الكفالات والتبرعات',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 40, minHeight: 42),
+                        onPressed: _openCart,
+                        icon: Badge(
+                          isLabelVisible: _cartCount != null && _cartCount! > 0,
+                          label: Text((_cartCount ?? 0).toString()),
+                          child: const Icon(Icons.shopping_cart_outlined,
+                            color: Color(0xFF075C39)),
+                        ),
+                      ),
                     Builder(builder: (menuContext) => IconButton(
                       tooltip: 'القائمة',
                       padding: EdgeInsets.zero,
