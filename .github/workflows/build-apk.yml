@@ -170,6 +170,60 @@ jobs:
           (adaptive/'ic_launcher.xml').write_text(xml,encoding='utf-8')
           PY
 
+      - name: Minimize mandatory Android system splash and match school artwork
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root = Path('android/app/src/main/res')
+          android_uri = 'http://schemas.android.com/apk/res/android'
+          ET.register_namespace('android', android_uri)
+          key = lambda x: '{' + android_uri + '}' + x
+          def ensure_item(style, name, value):
+              child = next((el for el in style.findall('item') if el.get('name') == name), None)
+              if child is None:
+                  child = ET.SubElement(style, 'item', {'name': name})
+              child.text = value
+          def ensure_launch_theme(path):
+              path.parent.mkdir(parents=True, exist_ok=True)
+              if path.exists():
+                  tree = ET.parse(path)
+                  resources = tree.getroot()
+              else:
+                  resources = ET.Element('resources')
+                  tree = ET.ElementTree(resources)
+              style = next((el for el in resources.findall('style') if el.get('name') == 'LaunchTheme'), None)
+              if style is None:
+                  style = ET.SubElement(resources, 'style', {'name': 'LaunchTheme', 'parent': '@android:style/Theme.Light.NoTitleBar'})
+              return tree, style
+
+          # On Android 12+, the OS must show a brief native starting window.
+          # Replace its oversized icon with a transparent drawable and a sky-
+          # colored background. The real school photo follows immediately.
+          drawable = root / 'drawable'
+          drawable.mkdir(parents=True, exist_ok=True)
+          (drawable / 'empty_splash_icon.xml').write_text(
+              '<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">'
+              '<solid android:color="@android:color/transparent"/></shape>',
+              encoding='utf-8')
+          tree, style = ensure_launch_theme(root / 'values-v31/styles.xml')
+          ensure_item(style, 'android:windowSplashScreenBackground', '#79C9EE')
+          ensure_item(style, 'android:windowSplashScreenAnimatedIcon', '@drawable/empty_splash_icon')
+          ensure_item(style, 'android:windowSplashScreenIconBackgroundColor', '#79C9EE')
+          tree.write(root / 'values-v31/styles.xml', encoding='utf-8', xml_declaration=True)
+
+          # On older versions the launch window can directly show the school
+          # background, avoiding a separate white page with a centered emblem.
+          tree, style = ensure_launch_theme(root / 'values/styles.xml')
+          ensure_item(style, 'android:windowBackground', '@drawable/school_launch_background')
+          tree.write(root / 'values/styles.xml', encoding='utf-8', xml_declaration=True)
+          (drawable / 'school_launch_background.xml').write_text(
+              '<layer-list xmlns:android="http://schemas.android.com/apk/res/android">'
+              '<item><bitmap android:gravity="fill" android:src="@drawable/school_splash"/></item>'
+              '</layer-list>', encoding='utf-8')
+          print('Native Android starting window prepared; Flutter owns actual school welcome screen')
+          PY
+
       - name: Remove only captured status bar and unused green footer from splash
         run: |
           python3 - <<'PY'
@@ -188,6 +242,10 @@ jobs:
               raise SystemExit('Unexpected source splash dimensions')
           clean = image.crop((0, top, image.width, bottom))
           clean.save(p, 'PNG', optimize=True)
+          # Use this SAME artwork for the pre-Android-12 native launch window.
+          native = Path('android/app/src/main/res/drawable-nodpi/school_splash.png')
+          native.parent.mkdir(parents=True, exist_ok=True)
+          clean.save(native, 'PNG', optimize=True)
           print(f'Splash prepared: {image.size} -> {clean.size}, artwork preserved')
           PY
 
