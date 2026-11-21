@@ -180,7 +180,7 @@ class _AltaawunAppState extends State<AltaawunApp> with WidgetsBindingObserver {
               child: child ?? const SizedBox(),
             ),
           ),
-          home: const SplashScreen(),
+          home: const CharityShell(),
         );
       },
     ),
@@ -758,7 +758,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         sound: tone == 'default' ? null : RawResourceAndroidNotificationSound('altaawun_' + tone),
         enableVibration: _notificationVibration,
       )),
-      payload: _notificationDestination(message.data) ?? '',
+      payload: _notificationDestination(message.data) ??
+          (message.data['screen'] == 'message'
+            ? 'altaawun_message:${jsonEncode({
+                'title': message.data['title'] ?? message.notification?.title ?? '',
+                'body': message.data['body'] ?? message.notification?.body ?? '',
+              })}'
+            : ''),
     );
   }
 
@@ -926,13 +932,64 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     return null;
   }
 
-  void _openNotificationNews(RemoteMessage message) {
-    final url = _notificationDestination(message.data);
+  void _showNotificationMessage(String title, String body) {
+    if (!mounted) return;
+    final heading = title.trim().isEmpty ? 'إشعار من جمعية التعاون الخيرية' : title.trim();
+    final fullBody = body.trim();
+    // The dialog must be presented after the app has completed its first
+    // frame, including when tapping a notification that cold-started it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(heading, textAlign: TextAlign.right),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(dialogContext).height * .65,
+            ),
+            child: SingleChildScrollView(
+              child: SelectionArea(
+                child: Text(
+                  fullBody.isEmpty ? 'لديك إشعار جديد من الجمعية.' : fullBody,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 16, height: 1.65),
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('إغلاق'),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  void _openNotificationData(Map<String, dynamic> data,
+      {String? fallbackTitle, String? fallbackBody}) {
+    final url = _notificationDestination(data);
     if (url != null) {
       _openNotificationUrl(url);
-    } else {
-      debugPrint('Push notification missing a valid URL or post ID');
+      return;
     }
+    if ((data['screen'] ?? '').toString() == 'message') {
+      _showNotificationMessage(
+        (data['title'] ?? fallbackTitle ?? '').toString(),
+        (data['body'] ?? fallbackBody ?? '').toString(),
+      );
+    }
+  }
+
+  void _openNotificationNews(RemoteMessage message) {
+    _openNotificationData(
+      message.data,
+      fallbackTitle: message.notification?.title,
+      fallbackBody: message.notification?.body,
+    );
   }
 
   bool _isPaymentUrl(String url) {
@@ -1007,10 +1064,25 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   }
 
   void _onLocalNotificationTap() {
-    final url = notificationTapUrl.value;
-    if (url == null || url.isEmpty) return;
+    final payload = notificationTapUrl.value;
+    if (payload == null || payload.isEmpty) return;
     notificationTapUrl.value = null;
-    _openNotificationUrl(url);
+    if (payload.startsWith('altaawun_message:')) {
+      try {
+        final decoded = jsonDecode(payload.substring('altaawun_message:'.length));
+        if (decoded is Map) {
+          _showNotificationMessage(
+            (decoded['title'] ?? '').toString(),
+            (decoded['body'] ?? '').toString(),
+          );
+          return;
+        }
+      } catch (error) {
+        debugPrint('Invalid notification message payload: $error');
+      }
+      return;
+    }
+    _openNotificationUrl(payload);
   }
 
   String _pushDiagnostic = 'جاري تسجيل الجهاز للإشعارات';
@@ -1071,11 +1143,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
             unawaited(_showForegroundNotification(message));
           }
           final url = _notificationDestination(message.data);
+          final isMessage = (message.data['screen'] ?? '').toString() == 'message';
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(message.notification?.title ?? 'إشعار جديد من الجمعية'),
-            action: url == null ? null : SnackBarAction(
-              label: 'قراءة الخبر',
-              onPressed: () => _openNotificationUrl(url),
+            action: (url == null && !isMessage) ? null : SnackBarAction(
+              label: isMessage && url == null ? 'عرض الرسالة' : 'قراءة الخبر',
+              onPressed: () => _openNotificationNews(message),
             ),
           ));
         });
