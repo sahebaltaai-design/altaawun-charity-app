@@ -1,0 +1,227 @@
+name: Diagnose iOS APNs Signing (no deployment)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-apns-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: macos-26-intel
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact source used for TestFlight build 251
+        uses: actions/checkout@v4
+        with:
+          ref: 1a3212fc0a04e9284c0d8f6a85fdc90605db06fa
+          persist-credentials: false
+
+      - name: Validate existing provisioning profile and Firebase IDs
+        env:
+          PROFILE_B64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$PROFILE_B64" || { echo "::error::Missing IOS_PROVISIONING_PROFILE_BASE64"; exit 1; }
+          printf '%s' "$PROFILE_B64" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          profile = plistlib.loads(Path(__import__('os').environ['RUNNER_TEMP'], 'profile.plist').read_bytes())
+          ent = profile.get('Entitlements', {})
+          expected_id = 'ARR89Z96X6.com.altaawun.charity'
+          assert ent.get('application-identifier') == expected_id, 'Provisioning profile belongs to a different app'
+          assert ent.get('aps-environment') == 'production', (
+              'Provisioning profile does not grant production APNs: '
+              'regenerate the App Store distribution profile after enabling Push Notifications'
+          )
+          assert 'ARR89Z96X6' in profile.get('TeamIdentifier', []), 'Incorrect Apple team'
+          fb = plistlib.loads(Path('ios/Runner/GoogleService-Info.plist').read_bytes())
+          assert fb.get('BUNDLE_ID') == 'com.altaawun.charity', 'Firebase iOS bundle ID differs'
+          assert fb.get('PROJECT_ID') == 'al-taawun-charity', 'Firebase project ID differs'
+          assert fb.get('GOOGLE_APP_ID') and fb.get('GCM_SENDER_ID'), 'Firebase app identifiers missing'
+          assert fb.get('IS_GCM_ENABLED') is True, 'Firebase GCM disabled'
+          print('PASS: Distribution profile includes production APNs and Firebase iOS IDs match.')
+          with open(__import__('os').environ['GITHUB_STEP_SUMMARY'], 'a') as s:
+              s.write('### APNs diagnostic for TestFlight build 251\n')
+              s.write('- PASS: Existing distribution profile includes production APNs entitlement.\n')
+              s.write('- PASS: Existing iOS Firebase app IDs match the bundle ID and project.\n')
+          PY
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Recreate same iOS project configuration without deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
+          flutter pub get
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          ent = Path('ios/Runner/Runner.entitlements')
+          ent.write_bytes(plistlib.dumps({'aps-environment':'production'}))
+          info = Path('ios/Runner/Info.plist')
+          plist = plistlib.loads(info.read_bytes())
+          plist['FirebaseAppDelegateProxyEnabled'] = True
+          plist['UIBackgroundModes'] = sorted(set(plist.get('UIBackgroundModes', [])) | {'remote-notification'})
+          plist['NSMicrophoneUsageDescription'] = 'يستخدم التطبيق الميكروفون للاستماع إلى أوامرك الصوتية والبحث بالصوت عند اختيارك هذه الميزة.'
+          plist['NSSpeechRecognitionUsageDescription'] = 'يستخدم التطبيق التعرف على الكلام لتحويل أوامرك الصوتية إلى نص لتنفيذ البحث الصوتي.'
+          info.write_bytes(plistlib.dumps(plist))
+          delegate = Path('ios/Runner/AppDelegate.swift')
+          source = delegate.read_text()
+          if 'import UserNotifications' not in source:
+              source = source.replace('import UIKit','import UIKit\nimport UserNotifications')
+          if 'application.registerForRemoteNotifications()' not in source:
+              assert 'GeneratedPluginRegistrant.register(with: self)' in source, 'Unable to locate plugin registration to insert APNs registration'
+              source = source.replace(
+                  'GeneratedPluginRegistrant.register(with: self)',
+                  '''GeneratedPluginRegistrant.register(with: self)
+              UNUserNotificationCenter.current().delegate = self
+              application.registerForRemoteNotifications()''')
+          delegate.write_text(source)
+          assert 'application.registerForRemoteNotifications()' in source
+          PY
+          ruby <<'RUBY'
+          require 'xcodeproj'
+          project = Xcodeproj::Project.open('ios/Runner.xcodeproj')
+          target = project.targets.find { |t| t.name == 'Runner' }
+          abort 'Runner target not found' unless target
+          target.build_configurations.each do |config|
+            config.build_settings['CODE_SIGN_ENTITLEMENTS'] = 'Runner/Runner.entitlements'
+          end
+          group = project.main_group.find_subpath('Runner', false)
+          abort 'Runner group not found' unless group
+          ref = group.files.find { |file| file.path == 'GoogleService-Info.plist' }
+          ref ||= group.new_file('GoogleService-Info.plist')
+          target.resources_build_phase.add_file_reference(ref, true) unless target.resources_build_phase.files_references.include?(ref)
+          project.save
+          RUBY
+          echo "Configured APNs registration, Firebase resource, and signing entitlements."
+
+      - name: Install signing certificate for local diagnostic
+        env:
+          CERT_B64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CERT_B64" && test -n "$CERT_PASSWORD" || { echo "::error::iOS signing certificate secrets missing"; exit 1; }
+          printf '%s' "$CERT_B64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/ios-apns-diagnostic.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" -P "$CERT_PASSWORD" -T /usr/bin/codesign >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -q 'Apple Distribution:'
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print UUID' "$RUNNER_TEMP/profile.plist")
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "PASS: Signing credentials loaded (contents never printed)."
+
+      - name: Apply original manual signing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          path = Path('ios/Runner.xcodeproj/project.pbxproj')
+          content = path.read_text()
+          content = re.sub(r'PRODUCT_BUNDLE_IDENTIFIER\s*=\s*[^;]+;', 'PRODUCT_BUNDLE_IDENTIFIER = com.altaawun.charity;', content)
+          content = re.sub(r'DEVELOPMENT_TEAM\s*=\s*[^;]+;', 'DEVELOPMENT_TEAM = ARR89Z96X6;', content)
+          content = re.sub(r'CODE_SIGN_STYLE\s*=\s*Automatic;', 'CODE_SIGN_STYLE = Manual;', content)
+          content = content.replace(
+              'PRODUCT_BUNDLE_IDENTIFIER = com.altaawun.charity;',
+              'PRODUCT_BUNDLE_IDENTIFIER = com.altaawun.charity;\n'
+              '\t\t\t\tDEVELOPMENT_TEAM = ARR89Z96X6;\n'
+              '\t\t\t\tCODE_SIGN_STYLE = Manual;\n'
+              '\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";\n'
+              '\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "' + os.environ['PROFILE_UUID'] + '";'
+          )
+          path.write_text(content)
+          PY
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>ARR89Z96X6</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.altaawun.charity</key><string>$PROFILE_UUID</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Build signed IPA locally (do not upload or publish)
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build ipa --release --build-name=1.0.20 --build-number=251 --export-options-plist=ios/ExportOptions.plist
+
+      - name: Verify entitlements inside exported signed IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA_FILE="$(find build/ios/ipa -name '*.ipa' -type f -print -quit)"
+          test -n "$IPA_FILE" || { echo "::error::No IPA generated"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/ipa-inspect"
+          unzip -q "$IPA_FILE" -d "$RUNNER_TEMP/ipa-inspect"
+          APP="$RUNNER_TEMP/ipa-inspect/Payload/Runner.app"
+          test -d "$APP"
+          codesign --verify --deep --strict "$APP"
+          codesign -d --entitlements :- "$APP" > "$RUNNER_TEMP/signed-entitlements.plist" 2> "$RUNNER_TEMP/codesign-diagnostic.txt"
+          security cms -D -i "$APP/embedded.mobileprovision" > "$RUNNER_TEMP/embedded-profile.plist"
+          python3 - <<'PY'
+          import os, plistlib
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          app = root / 'ipa-inspect/Payload/Runner.app'
+          signed = plistlib.loads((root / 'signed-entitlements.plist').read_bytes())
+          profile = plistlib.loads((root / 'embedded-profile.plist').read_bytes())
+          info = plistlib.loads((app / 'Info.plist').read_bytes())
+          fb = plistlib.loads((app / 'GoogleService-Info.plist').read_bytes())
+          expected_id = 'ARR89Z96X6.com.altaawun.charity'
+          assert signed.get('aps-environment') == 'production', 'Signed IPA is missing production APNs entitlement'
+          assert profile['Entitlements'].get('aps-environment') == 'production', 'Embedded profile missing production APNs entitlement'
+          assert signed.get('application-identifier') == expected_id, 'Signed IPA app identifier mismatch'
+          assert profile['Entitlements'].get('application-identifier') == expected_id, 'Embedded profile app identifier mismatch'
+          assert info.get('CFBundleIdentifier') == 'com.altaawun.charity', 'Signed app bundle ID mismatch'
+          assert info.get('FirebaseAppDelegateProxyEnabled') is True, 'Firebase delegate proxy disabled'
+          assert 'remote-notification' in info.get('UIBackgroundModes', []), 'Missing remote notification background mode'
+          assert fb.get('BUNDLE_ID') == info['CFBundleIdentifier'], 'Signed app Firebase bundle ID mismatch'
+          assert fb.get('PROJECT_ID') == 'al-taawun-charity', 'Wrong Firebase project inside IPA'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as s:
+              s.write('- PASS: Exported signed IPA and embedded provisioning profile both include **aps-environment = production**.\n')
+              s.write('- PASS: Bundle ID, Apple team, Firebase plist, delegate proxy, and remote-notification mode match.\n')
+              s.write('- No IPA was uploaded, no TestFlight submission was made, and version 251 at Apple is unchanged.\n')
+              s.write('- Limit: APNs device token registration and Firebase-to-device delivery **require a physical iPhone test**; CI cannot prove them.\n')
+          print('PASS: Signed app, embedded profile, and Firebase configuration are consistent.')
+          PY
+
+      - name: Add diagnostic limitation to summary
+        if: always()
+        shell: bash
+        run: |
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Note:** This workflow uses the exact source commit of build 251 and never uploads an IPA. A failure identifies a build/configuration issue; a pass does not prove APNs registered on a physical iPhone." >> "$GITHUB_STEP_SUMMARY"
