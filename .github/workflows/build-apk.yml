@@ -207,9 +207,9 @@ jobs:
               '<solid android:color="@android:color/transparent"/></shape>',
               encoding='utf-8')
           tree, style = ensure_launch_theme(root / 'values-v31/styles.xml')
-          ensure_item(style, 'android:windowSplashScreenBackground', '#79C9EE')
-          ensure_item(style, 'android:windowSplashScreenAnimatedIcon', '@drawable/empty_splash_icon')
-          ensure_item(style, 'android:windowSplashScreenIconBackgroundColor', '#79C9EE')
+          ensure_item(style, 'android:windowSplashScreenBackground', '@android:color/white')
+          ensure_item(style, 'android:windowSplashScreenAnimatedIcon', '@mipmap/ic_launcher')
+          ensure_item(style, 'android:windowSplashScreenIconBackgroundColor', '@android:color/white')
           tree.write(root / 'values-v31/styles.xml', encoding='utf-8', xml_declaration=True)
 
           # On older versions the launch window can directly show the school
