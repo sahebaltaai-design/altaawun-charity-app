@@ -638,27 +638,11 @@ class _SplashScreenState extends State<SplashScreen> {
       body: LayoutBuilder(builder: (context, constraints) => Stack(
         fit: StackFit.expand,
         children: [
-          // Smart mode is a true edge-to-edge image fit within the safe area:
-          // no duplicated, blurred, or green letterbox bands behind the photo.
-          // The picture itself uses BoxFit.fill so every pixel remains visible.
-          ColoredBox(
-            color: Colors.white,
-          ),
-          SafeArea(
-            top: true,
-            bottom: false,
-            minimum: const EdgeInsets.only(top: 4),
-            child: ClipRect(
-              child: Transform.scale(
-                // Smart mode guarantees the entire foreground remains visible;
-                // scaling above 100% would reintroduce unwanted crop.
-                scale: _splashConfig.preserveFullImage
-                    ? _splashConfig.zoom.clamp(0.7, 1.0).toDouble()
-                    : _splashConfig.zoom,
-                alignment: _splashConfig.alignment,
-                child: _currentSplashImage(),
-              ),
-            ),
+          // Draw the artwork edge-to-edge. Avoid a second colored startup
+          // panel or a safe-area strip above the approved school poster.
+          const ColoredBox(color: Colors.white),
+          Positioned.fill(
+            child: _currentSplashImage(fit: BoxFit.fill),
           ),
         ],
       )),
