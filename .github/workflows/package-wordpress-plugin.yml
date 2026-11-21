@@ -18,14 +18,14 @@ jobs:
       - name: Validate WordPress plugin PHP
         run: |
           php -l wordpress-plugin/altaawun-notifications.php
-          grep -q 'Version: 1.2.7' wordpress-plugin/altaawun-notifications.php
+          grep -q 'Version: 1.2.8' wordpress-plugin/altaawun-notifications.php
       - name: Package installable plugin ZIP
         run: |
           mkdir -p dist/altaawun-notifications
           cp wordpress-plugin/altaawun-notifications.php dist/altaawun-notifications/altaawun-notifications.php
           cd dist
-          zip -r altaawun-notifications-v1.2.7.zip altaawun-notifications
+          zip -r altaawun-notifications-v1.2.8.zip altaawun-notifications
       - uses: actions/upload-artifact@v4
         with:
-          name: altaawun-notifications-v1.2.7
-          path: dist/altaawun-notifications-v1.2.7.zip
+          name: altaawun-notifications-v1.2.8
+          path: dist/altaawun-notifications-v1.2.8.zip
