@@ -25,6 +25,22 @@ jobs:
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
           flutter pub get
 
+      - name: Set iOS home screen app name to Altaawn
+        run: |
+          bash tool/configure_app_name.sh
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          path = Path('ios/Runner/Info.plist')
+          with path.open('rb') as f:
+              info = plistlib.load(f)
+          info['CFBundleDisplayName'] = 'Altaawn'
+          info['CFBundleName'] = 'Altaawn'
+          with path.open('wb') as f:
+              plistlib.dump(info, f)
+          print('iOS launcher label:', info['CFBundleDisplayName'])
+          PY
+
       - name: Generate iOS app icon from charity emblem
         run: |
           python3 -m venv "$RUNNER_TEMP/ios-icon-venv"
@@ -37,7 +53,15 @@ jobs:
 
           source = Path('assets/png_style_emblem_the_same_arabic_logo_arched_em.png')
           emblem = Image.open(source).convert('RGBA')
-          mask = emblem.convert('RGB').convert('L').point(lambda pixel: 255 if pixel > 28 else 0)
+          # The source emblem has black outer canvas. Remove only dark pixels
+          # connected to the four exterior corners; preserve black lettering.
+          from PIL import ImageDraw
+          for corner in [(0, 0), (emblem.width - 1, 0),
+                         (0, emblem.height - 1),
+                         (emblem.width - 1, emblem.height - 1)]:
+              if max(emblem.getpixel(corner)[:3]) < 65:
+                  ImageDraw.floodfill(emblem, corner, (0, 0, 0, 0), thresh=42)
+          mask = emblem.getchannel('A')
           bounds = mask.getbbox()
           if bounds:
               left, top, right, bottom = bounds
@@ -55,9 +79,9 @@ jobs:
               scale = int(entry.get('scale', '1x').removesuffix('x'))
               width, height = round(width * scale), round(height * scale)
               filename = entry.setdefault('filename', f'CharityAppIcon-{width}x{height}.png')
-              icon = Image.new('RGBA', (width, height), (0, 0, 0, 255))
+              icon = Image.new('RGBA', (width, height), (255, 255, 255, 255))
               artwork = emblem.copy()
-              artwork.thumbnail((int(width * .94), int(height * .86)), Image.Resampling.LANCZOS)
+              artwork.thumbnail((int(width * .80), int(height * .82)), Image.Resampling.LANCZOS)
               icon.alpha_composite(artwork, ((width - artwork.width) // 2, (height - artwork.height) // 2))
               icon.convert('RGB').save(catalog / filename)
           contents_path.write_text(json.dumps(contents, indent=2) + '\n')
