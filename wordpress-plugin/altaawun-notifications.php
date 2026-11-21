@@ -27,7 +27,7 @@ function altaawun_push_page() {
   $type=sanitize_key(wp_unslash($_POST['notification_type'] ?? 'normal'));
   $result=altaawun_queue_manual_notification($title,$body,$url,$type,absint($_POST['post_id'] ?? 0),!empty($_POST['open_home']));
   echo '<div class="notice notice-'.(is_wp_error($result)?'error':'success').'"><p>'.esc_html(
-   is_wp_error($result)?$result->get_error_message():'تم إدراج الإشعار اليدوي للإرسال. راقب حالة الإرسال أدناه؛ هذه الرسالة لا تعني أنه وصل للهاتف.'
+   is_wp_error($result)?$result->get_error_message():($result==='sent'?'قبل Firebase الإشعار اليدوي، تحقق من وصوله على الهاتف.':'تم إدراج الإشعار اليدوي للإرسال في الخلفية. راقب حالة الإرسال أدناه.')
   ).'</p></div>';
  }
  $last=get_option('altaawun_push_last_manual_status',[]);
@@ -79,6 +79,19 @@ function altaawun_queue_manual_notification($title,$body,$url='',$type='normal',
  } elseif (!$open_home) {
   return new WP_Error('destination','اختر خبرًا أو اكتب رابطه، أو فعّل خيار رسالة عامة بدون تفاصيل.');
  }
+ // Fast path: send immediately, without waiting for WP-Cron.
+ // cURL multi dispatches all nine topic messages concurrently, while
+ // automatic publication alerts still use their original code unchanged.
+ if (function_exists('curl_multi_init') && !defined('WP_PROXY_HOST')) {
+  $result=altaawun_push_send($title,$body,$url,$type,0,$post_id,($open_home && !$url));
+  update_option('altaawun_push_last_manual_status',[
+   'id'=>wp_generate_uuid4(),
+   'status'=>is_wp_error($result)?'failed':'accepted',
+   'error'=>is_wp_error($result)?$result->get_error_message():'',
+   'time'=>current_time('mysql')
+  ],false);
+  return is_wp_error($result)?$result:'sent';
+ }
  $id=wp_generate_uuid4();
  $payload=['id'=>$id,'title'=>$title,'body'=>$body,'url'=>$url,'post_id'=>$post_id,'open_home'=>($open_home && !$url),'type'=>$type==='urgent'?'urgent':'normal','time'=>current_time('mysql')];
  $key='altaawun_push_manual_job_'.$id;
@@ -90,7 +103,7 @@ function altaawun_queue_manual_notification($title,$body,$url='',$type='normal',
  }
  update_option('altaawun_push_last_manual_status',['id'=>$id,'status'=>'queued','time'=>current_time('mysql')],false);
  if (!wp_doing_cron()) add_action('shutdown','altaawun_push_kick_cron',100);
- return true;
+ return 'queued';
 }
 add_action('altaawun_push_manual_send_job',function($id){
  $key='altaawun_push_manual_job_'.$id;
