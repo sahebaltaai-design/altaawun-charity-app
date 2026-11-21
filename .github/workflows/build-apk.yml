@@ -172,9 +172,11 @@ jobs:
           from pathlib import Path
           p = Path('assets/welcome_background-2.png')
           image = Image.open(p).convert('RGB')
-          # Source artwork is a phone screenshot; remove the top status strip.
-          # Preserve original dimensions to keep the splash layout consistent.
-          top = round(image.height * 0.065)
+          # The original artwork contains a photographed phone status bar,
+          # but the charity crest starts just below it. Cropping 6.5% removed
+          # the top arch of the logo. Remove only the status strip (3.5%).
+          # Preserve the canvas dimensions and the complete charity emblem.
+          top = round(image.height * 0.035)
           clean = image.crop((0, top, image.width, image.height))
           clean = clean.resize(image.size, Image.Resampling.LANCZOS)
           clean.save(p, 'PNG', optimize=True)
