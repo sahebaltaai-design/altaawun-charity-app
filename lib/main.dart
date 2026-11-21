@@ -2113,13 +2113,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
       height: 72,
-      selectedIndex: [0, 1, 4, 3, 7].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 7].indexOf(page),
-      onDestinationSelected: (index) => go([0, 1, 4, 3, 7][index]),
+      selectedIndex: [0, 3, 4, 1, 7].indexOf(page) < 0 ? 0 : [0, 3, 4, 1, 7].indexOf(page),
+      onDestinationSelected: (index) => go([0, 3, 4, 1, 7][index]),
       destinations: const [
         NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
         NavigationDestination(icon: Icon(Icons.favorite_border), label: 'تبرع'),
         NavigationDestination(icon: Icon(Icons.article_outlined), label: 'الأخبار'),
-        NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), label: 'المزيد'),
+        NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), label: 'كفالة'),
         NavigationDestination(icon: Icon(Icons.person_outline), label: 'حسابي'),
       ],
     ),
@@ -2183,6 +2183,26 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
       )),
     ])))),
+    if (defaultTargetPlatform != TargetPlatform.iOS)
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 2),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: () => go(3),
+            icon: const Icon(Icons.volunteer_activism_outlined, size: 25),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 11),
+              child: Text('تبرع الآن', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: green,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      ),
     Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -2610,8 +2630,15 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ] else if (page == 3) ...[
         if (defaultTargetPlatform == TargetPlatform.iOS) ...[
           const _IosDonationInformation(),
-        ] else
+        ] else ...[
+          const Text('تبرع الآن', textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 23, color: deepGreen, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 9),
+          const Text('اختر مجال التبرع من الفئات المتاحة لإكمال التبرع بأمان داخل التطبيق.',
+            textAlign: TextAlign.center, style: TextStyle(fontSize: 14, height: 1.6)),
+          const SizedBox(height: 16),
           _donationCategories(),
+        ],
       ] else if (page == 4) ...[
         _newsFeed(),
       ] else if (page == 6) ...[
