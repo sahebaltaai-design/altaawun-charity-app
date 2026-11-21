@@ -7,6 +7,7 @@ import 'charity_account_page.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -526,6 +527,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Timer? _autoEnterTimer;
   bool _entering = false;
   SplashRemoteConfig _splashConfig = const SplashRemoteConfig();
+  File? _cachedSplashImage;
   late final DateTime _splashStartedAt;
 
   @override
@@ -549,8 +551,12 @@ class _SplashScreenState extends State<SplashScreen> {
   Future<void> _loadSplashVisualSettings() async {
     try {
       final cached = await SplashRemoteConfig.cached();
+      final savedImage = await SplashRemoteConfig.cachedImage();
       if (cached != null && mounted && !_entering) {
-        setState(() => _splashConfig = cached);
+        setState(() {
+          _splashConfig = cached;
+          _cachedSplashImage = savedImage;
+        });
         _rescheduleAutoEnter(cached.durationMs);
       }
     } catch (error) {
@@ -560,9 +566,15 @@ class _SplashScreenState extends State<SplashScreen> {
       // Public read-only configuration, not an authenticated account page.
       // A short timeout means offline users can still enter quickly.
       final fresh = await SplashRemoteConfig.refresh();
-      if (fresh != null && mounted && !_entering) {
-        setState(() => _splashConfig = fresh);
-        _rescheduleAutoEnter(fresh.durationMs);
+      if (fresh != null) {
+        final savedImage = await SplashRemoteConfig.cachedImage();
+        if (mounted && !_entering) {
+          setState(() {
+            _splashConfig = fresh;
+            _cachedSplashImage = savedImage;
+          });
+          _rescheduleAutoEnter(fresh.durationMs);
+        }
       }
     } catch (error) {
       debugPrint('Splash WordPress settings unavailable: $error');
@@ -579,17 +591,18 @@ class _SplashScreenState extends State<SplashScreen> {
   );
 
   Widget _currentSplashImage() {
-    final url = _splashConfig.imageUrlWithRevision;
-    if (url.isEmpty) return _bundledSplash();
-    return Image.network(
-      url,
+    final file = _cachedSplashImage;
+    if (_splashConfig.imageUrl.isEmpty || file == null) {
+      return _bundledSplash();
+    }
+    // The approved WordPress image lives on the phone. It still appears
+    // immediately when the site is down, even after a device restart.
+    return Image.file(
+      file,
       fit: _splashConfig.fit,
       alignment: _splashConfig.alignment,
       width: double.infinity,
       height: double.infinity,
-      // Show the bundled design until the image from WordPress is ready.
-      loadingBuilder: (context, child, loading) =>
-          loading == null ? child : _bundledSplash(),
       errorBuilder: (_, __, ___) => _bundledSplash(),
     );
   }
