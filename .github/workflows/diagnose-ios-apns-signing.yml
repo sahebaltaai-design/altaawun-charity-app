@@ -2,6 +2,10 @@ name: Diagnose iOS APNs Signing (no deployment)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-ios-apns-signing.yml'
 
 permissions:
   contents: read
