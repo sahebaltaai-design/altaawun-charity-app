@@ -778,6 +778,15 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     await messaging.unsubscribeFromTopic('altaawun_updates');
   }
 
+  Future<void> _restorePushPreferencesAndRegister() async {
+    try {
+      await _loadNotificationPreferences();
+    } catch (error) {
+      debugPrint('Push preferences load failed: $error');
+    }
+    if (mounted) await _setupPush();
+  }
+
   Future<void> _loadNotificationPreferences() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
@@ -1454,8 +1463,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     _loadAppSlides();
     _loadCategorySettings();
     _restoreRemoteTiles();
-    _loadNotificationPreferences();
-    _setupPush();
+    // Restore the saved topic preference before subscribing to Firebase topics.
+    unawaited(_restorePushPreferencesAndRegister());
     notificationTapUrl.addListener(_onLocalNotificationTap);
     WidgetsBinding.instance.addPostFrameCallback((_) => _onLocalNotificationTap());
     WidgetsBinding.instance.addObserver(this);
@@ -1484,6 +1493,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) {
       _loadWordPressCategories(silent: true);
       _loadRemoteTiles();
+      // APNs may register after the first startup attempt; retry on resume.
+      if (_fcmToken == null && !_pushSetupRunning) unawaited(_setupPush());
     }
   }
 
