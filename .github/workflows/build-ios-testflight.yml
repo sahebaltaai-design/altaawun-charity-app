@@ -194,24 +194,42 @@ jobs:
           RUBY
           echo "Configured production APNs entitlement and remote notification background mode"
 
-      - name: Ensure native iOS APNs registration
+      - name: Ensure native iOS APNs registration and Firebase token forwarding
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           path = Path('ios/Runner/AppDelegate.swift')
           source = path.read_text()
-          if 'import UserNotifications' not in source:
-              source = source.replace('import UIKit', 'import UIKit\nimport UserNotifications')
+          if 'import FirebaseMessaging' not in source:
+              source = source.replace('import UIKit', 'import UIKit\nimport FirebaseMessaging')
           if 'application.registerForRemoteNotifications()' not in source:
-              source = source.replace(
-                  'GeneratedPluginRegistrant.register(with: self)',
-                  '''GeneratedPluginRegistrant.register(with: self)
-              UNUserNotificationCenter.current().delegate = self
-              application.registerForRemoteNotifications()'''
-              )
+              anchor = 'GeneratedPluginRegistrant.register(with: self)'
+              if anchor not in source:
+                  raise RuntimeError('Unable to locate Flutter plugin registration')
+              source = source.replace(anchor, anchor + '\n    application.registerForRemoteNotifications()', 1)
+          if 'didRegisterForRemoteNotificationsWithDeviceToken' not in source:
+              pos = source.rfind('}')
+              if pos < 0:
+                  raise RuntimeError('Unable to locate AppDelegate closing brace')
+              callbacks = """
+            override func application(_ application: UIApplication,
+              didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+              Messaging.messaging().apnsToken = deviceToken
+              NSLog("Altaawun APNs registration succeeded; token length: %d", deviceToken.count)
+              super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+            }
+
+            override func application(_ application: UIApplication,
+              didFailToRegisterForRemoteNotificationsWithError error: Error) {
+              NSLog("Altaawun APNs registration failed: %@", error.localizedDescription)
+              super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+            }
+          """
+              source = source[:pos] + callbacks + source[pos:]
           path.write_text(source)
-          print('Registered iOS application for remote notifications at startup')
+          assert 'Messaging.messaging().apnsToken = deviceToken' in source
+          print('APNs registration and Firebase token forwarding configured')
           PY
 
       - name: Bundle Firebase iOS configuration
