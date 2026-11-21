@@ -180,7 +180,7 @@ class _AltaawunAppState extends State<AltaawunApp> with WidgetsBindingObserver {
               child: child ?? const SizedBox(),
             ),
           ),
-          home: const CharityShell(),
+          home: const SplashScreen(),
         );
       },
     ),
@@ -513,8 +513,39 @@ class _CheckoutContentState extends State<_CheckoutContent> {
   Widget build(BuildContext context) => WebViewWidget(controller: controller);
 }
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  Timer? _autoEnterTimer;
+  bool _entering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Show the original welcome artwork for a moment, then enter without a tap.
+    // CharityShell will handle a pending notification after this transition.
+    _autoEnterTimer = Timer(const Duration(milliseconds: 1500), _enterApp);
+  }
+
+  void _enterApp() {
+    if (!mounted || _entering) return;
+    _entering = true;
+    _autoEnterTimer?.cancel();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const CharityShell()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _autoEnterTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -543,8 +574,7 @@ class SplashScreen extends StatelessWidget {
                   height: 64,
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: () => Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const CharityShell())),
+                    onPressed: _enterApp,
                     icon: const Icon(Icons.login, size: 27),
                     label: const FittedBox(
                       fit: BoxFit.scaleDown,
