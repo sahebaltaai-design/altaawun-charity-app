@@ -2,7 +2,7 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.5
+ * Version: 1.2.6
  */
 defined('ABSPATH') || exit;
 add_action('admin_menu', function () {
@@ -25,7 +25,7 @@ function altaawun_push_page() {
   $body=sanitize_textarea_field(wp_unslash($_POST['body'] ?? ''));
   $url=esc_url_raw(wp_unslash($_POST['url'] ?? ''));
   $type=sanitize_key(wp_unslash($_POST['notification_type'] ?? 'normal'));
-  $result=altaawun_queue_manual_notification($title,$body,$url,$type);
+  $result=altaawun_queue_manual_notification($title,$body,$url,$type,absint($_POST['post_id'] ?? 0),!empty($_POST['open_home']));
   echo '<div class="notice notice-'.(is_wp_error($result)?'error':'success').'"><p>'.esc_html(
    is_wp_error($result)?$result->get_error_message():'تم إدراج الإشعار اليدوي للإرسال. راقب حالة الإرسال أدناه؛ هذه الرسالة لا تعني أنه وصل للهاتف.'
   ).'</p></div>';
@@ -40,14 +40,20 @@ function altaawun_push_page() {
    'آخر إشعار يدوي: '.$label.$note.' — '.($last['time']??'')
   ).'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.5</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.6</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
  echo '<h2>إرسال إشعار يدوي</h2><form method="post">';
  wp_nonce_field('altaawun_push_send');
  echo '<p><input name="title" required maxlength="120" placeholder="عنوان الإشعار" class="regular-text"></p><p><textarea name="body" required maxlength="1000" placeholder="نص الإشعار" rows="4" style="width:90%"></textarea></p>';
- echo '<p><input type="url" name="url" placeholder="رابط الخبر HTTPS (اختياري)" style="width:90%;direction:ltr"></p>';
+ echo '<p><label>اختر خبرًا منشورًا لعرض تفاصيله داخل التطبيق:</label> <select name="post_id"><option value="0">— اختر الخبر —</option>';
+ foreach (get_posts(['post_type'=>'post','post_status'=>'publish','posts_per_page'=>50,'orderby'=>'date','order'=>'DESC']) as $item)
+  echo '<option value="'.absint($item->ID).'">'.esc_html(get_the_title($item)).'</option>';
+ echo '</select></p>';
+ echo '<p><label>أو أدخل رابط الخبر من موقع الجمعية:<br><input type="url" name="url" placeholder="https://www.aytamaliraq.com/..." style="width:90%;direction:ltr"></label></p>';
+ echo '<p><label><input type="checkbox" name="open_home" value="1"> رسالة عامة بلا رابط: تفتح الصفحة الرئيسية فقط</label></p>';
+ echo '<p>لإظهار تفاصيل خبر بعد الضغط على الإشعار، يجب اختيار خبر منشور أو إدخال رابطه.</p>';
  echo '<p><label>نوع الإشعار <select name="notification_type"><option value="normal">عادي</option><option value="urgent">عاجل</option></select></label></p>';
  echo '<button class="button button-primary" name="altaawun_send">إرسال الإشعار</button></form><p>يُرسل إشعار تلقائي عند نشر مقال أو منتج جديد لأول مرة.</p></div>';
 }
@@ -56,16 +62,25 @@ function altaawun_push_page() {
  * Avoids running nine sequential FCM HTTP calls inside a web admin request.
  * Does not modify the automatic new-post publishing workflow.
  */
-function altaawun_queue_manual_notification($title,$body,$url='',$type='normal') {
+function altaawun_queue_manual_notification($title,$body,$url='',$type='normal',$post_id=0,$open_home=false) {
  if (!get_option('altaawun_push_credentials','')) return new WP_Error('config','إعداد Firebase Service Account غير موجود.');
  if (!$title||!$body) return new WP_Error('empty','العنوان والنص مطلوبان.');
  if ($url) {
+  $post_id=0;
   $uri=wp_parse_url($url);
-  if (!$uri || strtolower($uri['scheme']??'')!=='https' || empty($uri['host']) || !empty($uri['user']) || !empty($uri['pass']))
-   return new WP_Error('url','رابط الخبر يجب أن يكون HTTPS صالحًا.');
+  if (!$uri || strtolower($uri['scheme']??'')!=='https' || empty($uri['host']) || !empty($uri['user']) || !empty($uri['pass'])
+   || !in_array(strtolower($uri['host']),['aytamaliraq.com','www.aytamaliraq.com'],true))
+   return new WP_Error('url','أدخل رابط HTTPS لخبر موجود على موقع الجمعية.');
+ } elseif ($post_id>0) {
+  $post=get_post($post_id);
+  if (!$post || $post->post_status!=='publish' || $post->post_type!=='post')
+   return new WP_Error('post','الخبر المحدد غير منشور. اختر خبرًا منشورًا.');
+  $url=get_permalink($post_id);
+ } elseif (!$open_home) {
+  return new WP_Error('destination','اختر خبرًا أو اكتب رابطه، أو فعّل خيار رسالة عامة بدون تفاصيل.');
  }
  $id=wp_generate_uuid4();
- $payload=['id'=>$id,'title'=>$title,'body'=>$body,'url'=>$url,'type'=>$type==='urgent'?'urgent':'normal','time'=>current_time('mysql')];
+ $payload=['id'=>$id,'title'=>$title,'body'=>$body,'url'=>$url,'post_id'=>$post_id,'open_home'=>($open_home && !$url),'type'=>$type==='urgent'?'urgent':'normal','time'=>current_time('mysql')];
  $key='altaawun_push_manual_job_'.$id;
  add_option($key,$payload,'','no');
  $scheduled=wp_schedule_single_event(time(),'altaawun_push_manual_send_job',[$id],true);
@@ -84,7 +99,7 @@ add_action('altaawun_push_manual_send_job',function($id){
  $status=get_option('altaawun_push_last_manual_status',[]);
  $is_current=is_array($status) && ($status['id']??'')===$id;
  if ($is_current) update_option('altaawun_push_last_manual_status',['id'=>$id,'status'=>'sending','time'=>current_time('mysql')],false);
- $result=altaawun_push_send($job['title'],$job['body'],$job['url'],$job['type']);
+ $result=altaawun_push_send($job['title'],$job['body'],$job['url'],$job['type'],0,absint($job['post_id']??0),!empty($job['open_home']));
  if ($is_current) update_option('altaawun_push_last_manual_status',[
   'id'=>$id,'status'=>is_wp_error($result)?'failed':'accepted',
   'error'=>is_wp_error($result)?$result->get_error_message():'',
@@ -99,7 +114,7 @@ function altaawun_push_topics() {
    $result['altaawun_tone_'.$tone.'_'.$mode]='altaawun_tone_v2_'.$tone.'_'.$mode;
  return $result;
 }
-function altaawun_push_send($title,$body,$url='',$type='normal',$post_id=0) {
+function altaawun_push_send($title,$body,$url='',$type='normal',$post_id=0,$related_post_id=0,$open_home=false) {
  $a=json_decode(get_option('altaawun_push_credentials',''),true);
  if (empty($a['private_key'])||empty($a['client_email'])||empty($a['project_id'])) return new WP_Error('config','أدخل ملف Service Account أولاً.');
  if (!$title||!$body) return new WP_Error('empty','العنوان والنص مطلوبان.');
@@ -122,9 +137,10 @@ function altaawun_push_send($title,$body,$url='',$type='normal',$post_id=0) {
  $errors=[];
  foreach (altaawun_push_topics() as $topic=>$channel) {
   if (in_array($topic,$sent,true)) continue;
-  $data=['type'=>$type==='urgent'?'urgent':'normal','screen'=>'news'];
+  $data=['type'=>$type==='urgent'?'urgent':'normal','screen'=>$open_home?'home':'news'];
   if ($url) $data['url']=$url;
-  if ($post_id>0) $data['post_id']=(string)$post_id;
+  if ($related_post_id>0) $data['post_id']=(string)$related_post_id;
+  elseif ($post_id>0) $data['post_id']=(string)$post_id;
   $message=[
    'topic'=>$topic,
    'notification'=>['title'=>mb_substr($title,0,120),'body'=>mb_substr($body,0,1000)],
