@@ -570,6 +570,28 @@ class _SplashScreenState extends State<SplashScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                SizedBox(
+                  height: 64,
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _enterApp,
+                    icon: const Icon(Icons.login, size: 27),
+                    label: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text('الدخول إلى التطبيق',
+                        style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF00652A),
+                      foregroundColor: Colors.white,
+                      elevation: 6,
+                      side: const BorderSide(color: Color(0xFFFFD66A), width: 2.5),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(36)),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
