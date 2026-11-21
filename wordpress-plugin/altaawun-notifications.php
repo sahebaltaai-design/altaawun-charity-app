@@ -2,7 +2,7 @@
 /**
  * Plugin Name: إشعارات جمعية التعاون الخيرية
  * Description: إشعارات Firebase تلقائية عند نشر الأخبار والمنتجات ويدوية من لوحة التحكم.
- * Version: 1.2.8
+ * Version: 1.2.9
  */
 defined('ABSPATH') || exit;
 
@@ -11,6 +11,11 @@ add_action('admin_menu', function () {
  add_submenu_page('altaawun-app-settings','شاشة الترحيب','شاشة الترحيب','manage_options','altaawun-app-settings','altaawun_splash_settings_page');
 }, 20);
 
+add_action('admin_enqueue_scripts', function($hook) {
+ if ($hook === 'toplevel_page_altaawun-app-settings') {
+  wp_enqueue_media();
+ }
+});
 function altaawun_splash_defaults() {
  return [
   'image_id'=>0, 'fit'=>'cover', 'scale'=>1.0,
@@ -84,7 +89,6 @@ function altaawun_splash_settings_page() {
  }
  $cfg=altaawun_splash_settings();
  $url=altaawun_splash_image_url($cfg['image_id']);
- wp_enqueue_media();
  echo '<div class="wrap" dir="rtl"><h1>إعدادات التطبيق ← شاشة الترحيب</h1>';
  echo '<p>تحكم بصورة الترحيب وظهورها على أندرويد وآيفون من هنا دون تعديل الكود. التطبيق الجديد يعرض الصورة المخزنة إذا تعذر الاتصال بالموقع.</p>';
  echo '<form method="post" id="altaawun-splash-form">';
@@ -124,7 +128,8 @@ function altaawun_splash_settings_page() {
      var x=parseFloat($('#altaawun-splash-x').val());
      var y=parseFloat($('#altaawun-splash-y').val());
      var scale=parseFloat($('#altaawun-splash-scale').val());
-     img.css({'object-fit':fit,'object-position':(50+x*50)+'% '+(50+y*50)+'%','transform':'scale('+scale+')'});
+     var origin=(50+x*50)+'% '+(50+y*50)+'%';
+     img.css({'object-fit':fit,'object-position':origin,'transform-origin':origin,'transform':'scale('+scale+')'});
      $('#altaawun-splash-scale-out').text(Math.round(scale*100)+'%');
      $('#altaawun-splash-duration-out').text((parseInt($('#altaawun-splash-duration').val(),10)/1000).toFixed(1)+' ثانية');
    }
@@ -188,7 +193,7 @@ function altaawun_push_page() {
    'آخر إشعار يدوي: '.$label.$note.' — '.($last['time']??'')
   ).'</p></div>';
  }
- echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.8</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
+ echo '<div class="wrap" dir="rtl"><h1>إشعارات جمعية التعاون الخيرية — 1.2.9</h1><p>إرسال إلى قنوات النغمات الجديدة والقناة القديمة للأجهزة السابقة.</p>';
  echo '<h2>إعداد Firebase Service Account</h2><form method="post">';
  wp_nonce_field('altaawun_push_save');
  echo '<textarea name="credentials" rows="8" style="width:90%;direction:ltr" placeholder="Service Account JSON"></textarea><p><button class="button button-primary" name="altaawun_save">حفظ</button></p></form>';
