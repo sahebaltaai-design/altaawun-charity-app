@@ -1,10 +1,13 @@
 import 'app_update_service.dart';
+import 'splash_remote_config.dart';
+import 'quick_donation_widget.dart';
 import 'charity_about_content.dart';
 import 'charity_voice_assistant.dart';
 import 'charity_account_page.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -19,8 +22,14 @@ import 'package:google_fonts/google_fonts.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // iOS builds may not have Firebase configuration yet. Never block the UI
-  // from launching because an optional push service cannot initialize.
+  // Render the school welcome image immediately instead of holding the
+  // Android system splash while Firebase and notification channels initialize.
+  runApp(const AltaawunApp());
+  unawaited(_initializeStartupServices());
+}
+
+Future<void> _initializeStartupServices() async {
+  // Optional notification services must never block the first Flutter frame.
   try {
     await Firebase.initializeApp();
   } catch (error) {
@@ -31,7 +40,6 @@ Future<void> main() async {
   } catch (error) {
     debugPrint('Notification channels unavailable at startup: $error');
   }
-  runApp(const AltaawunApp());
 }
 
 const _notificationChannelPrefix = 'altaawun_tone_v2_';
@@ -513,80 +521,132 @@ class _CheckoutContentState extends State<_CheckoutContent> {
   Widget build(BuildContext context) => WebViewWidget(controller: controller);
 }
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: LayoutBuilder(builder: (context, constraints) => Stack(
-      fit: StackFit.expand,
-      children: [
-        const ColoredBox(color: deepGreen),
-        // Preserve the full artwork and logo without stretching or cropping
-        // on phones with different aspect ratios.
-        Image.asset(
-          'assets/welcome_background-2.png',
-          fit: BoxFit.contain,
-          alignment: Alignment.center,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-        ),
-        Positioned(
-          left: 16,
-          right: 16,
-          bottom: 16,
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  height: 64,
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: () => Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const CharityShell())),
-                    icon: const Icon(Icons.login, size: 27),
-                    label: const FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text('الدخول إلى التطبيق',
-                        style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF00652A),
-                      foregroundColor: Colors.white,
-                      elevation: 6,
-                      side: const BorderSide(color: Color(0xFFFFD66A), width: 2.5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(36)),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF003B1D),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFFFD66A), width: 1),
-                  ),
-                  child: const Text(
-                    'معًا .. نصنع لهم مستقبلًا أفضل',
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  Timer? _autoEnterTimer;
+  bool _entering = false;
+  SplashRemoteConfig _splashConfig = const SplashRemoteConfig();
+  File? _cachedSplashImage;
+  late final DateTime _splashStartedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _splashStartedAt = DateTime.now();
+    // Start immediately with the safe bundled artwork. WordPress changes
+    // update the splash screen on next launch (or this launch if fetched fast).
+    _rescheduleAutoEnter(_splashConfig.durationMs);
+    unawaited(_loadSplashVisualSettings());
+  }
+
+  void _rescheduleAutoEnter(int requestedDurationMs) {
+    if (!mounted || _entering) return;
+    _autoEnterTimer?.cancel();
+    final elapsed = DateTime.now().difference(_splashStartedAt).inMilliseconds;
+    final remaining = (requestedDurationMs - elapsed).clamp(100, 8000).toInt();
+    _autoEnterTimer = Timer(Duration(milliseconds: remaining), _enterApp);
+  }
+
+  Future<void> _loadSplashVisualSettings() async {
+    try {
+      final cached = await SplashRemoteConfig.cached();
+      final savedImage = await SplashRemoteConfig.cachedImage();
+      if (cached != null && mounted && !_entering) {
+        setState(() {
+          _splashConfig = cached;
+          _cachedSplashImage = savedImage;
+        });
+        _rescheduleAutoEnter(cached.durationMs);
+      }
+    } catch (error) {
+      debugPrint('Splash cached settings unavailable: $error');
+    }
+    try {
+      // Public read-only configuration, not an authenticated account page.
+      // A short timeout means offline users can still enter quickly.
+      final fresh = await SplashRemoteConfig.refresh();
+      if (fresh != null) {
+        final savedImage = await SplashRemoteConfig.cachedImage();
+        if (mounted && !_entering) {
+          setState(() {
+            _splashConfig = fresh;
+            _cachedSplashImage = savedImage;
+          });
+          _rescheduleAutoEnter(fresh.durationMs);
+        }
+      }
+    } catch (error) {
+      debugPrint('Splash WordPress settings unavailable: $error');
+    }
+  }
+
+  Widget _bundledSplash({BoxFit? fit}) => Image.asset(
+    'assets/altaawn_school_splash_approved.jpg',
+    fit: fit ?? _splashConfig.fit,
+    alignment: _splashConfig.alignment,
+    width: double.infinity,
+    height: double.infinity,
+    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+  );
+
+  Widget _currentSplashImage({BoxFit? fit}) {
+    final file = _cachedSplashImage;
+    if (_splashConfig.imageUrl.isEmpty || file == null) {
+      return _bundledSplash(fit: fit);
+    }
+    // The approved WordPress image lives on the phone. It still appears
+    // immediately when the site is down, even after a device restart.
+    return Image.file(
+      file,
+      fit: fit ?? _splashConfig.fit,
+      alignment: _splashConfig.alignment,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, __, ___) => _bundledSplash(),
+    );
+  }
+
+  void _enterApp() {
+    if (!mounted || _entering) return;
+    _entering = true;
+    _autoEnterTimer?.cancel();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const CharityShell()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _autoEnterTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
+    value: const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+    ),
+    child: Scaffold(
+      body: LayoutBuilder(builder: (context, constraints) => Stack(
+        fit: StackFit.expand,
+        children: [
+          // Draw the artwork edge-to-edge. Avoid a second colored startup
+          // panel or a safe-area strip above the approved school poster.
+          const ColoredBox(color: Colors.white),
+          Positioned.fill(
+            child: _currentSplashImage(fit: BoxFit.fill),
           ),
-        ),
-      ],
-    )),
+        ],
+      )),
+    ),
   );
 }
 
@@ -742,6 +802,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   String _homeTileSize = 'medium';
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
+    // iOS notifications use APNs foreground presentation.
+    if (defaultTargetPlatform != TargetPlatform.android) return;
     final tone = const ['urgent', 'news', 'soft', 'default'].contains(_notificationTone)
         ? _notificationTone : 'default';
     final channelId = _notificationChannelPrefix + tone + (_notificationVibration ? '_vibrate' : '_silent');
@@ -756,7 +818,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         sound: tone == 'default' ? null : RawResourceAndroidNotificationSound('altaawun_' + tone),
         enableVibration: _notificationVibration,
       )),
-      payload: (message.data['url'] ?? message.data['link'] ?? '').toString(),
+      payload: _notificationDestination(message.data) ??
+          (message.data['screen'] == 'message'
+            ? 'altaawun_message:${jsonEncode({
+                'title': message.data['title'] ?? message.notification?.title ?? '',
+                'body': message.data['body'] ?? message.notification?.body ?? '',
+              })}'
+            : ''),
     );
   }
 
@@ -774,6 +842,15 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       }
     }
     await messaging.unsubscribeFromTopic('altaawun_updates');
+  }
+
+  Future<void> _restorePushPreferencesAndRegister() async {
+    try {
+      await _loadNotificationPreferences();
+    } catch (error) {
+      debugPrint('Push preferences load failed: $error');
+    }
+    if (mounted) await _setupPush();
   }
 
   Future<void> _loadNotificationPreferences() async {
@@ -900,12 +977,81 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   bool _validNewsUrl(String value) {
     final uri = Uri.tryParse(value);
     return uri != null && uri.scheme == 'https' &&
-        (uri.host == 'aytamaliraq.com' || uri.host == 'www.aytamaliraq.com');
+        uri.host.isNotEmpty && uri.userInfo.isEmpty;
+  }
+
+  String? _notificationDestination(Map<String, dynamic> data) {
+    for (final key in const ['url', 'link', 'post_url', 'permalink', 'target_url', 'deeplink']) {
+      final raw = (data[key] ?? '').toString().trim();
+      if (raw.isEmpty) continue;
+      final value = raw.startsWith('www.') ? 'https://$raw' : raw;
+      if (_validNewsUrl(value)) return value;
+    }
+    final id = int.tryParse((data['post_id'] ?? data['postId'] ?? data['id'] ?? '').toString());
+    if (id != null && id > 0) return 'https://www.aytamaliraq.com/?p=$id';
+    return null;
+  }
+
+  void _showNotificationMessage(String title, String body) {
+    if (!mounted) return;
+    final heading = title.trim().isEmpty ? 'إشعار من جمعية التعاون الخيرية' : title.trim();
+    final fullBody = body.trim();
+    // The dialog must be presented after the app has completed its first
+    // frame, including when tapping a notification that cold-started it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(heading, textAlign: TextAlign.right),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(dialogContext).height * .65,
+            ),
+            child: SingleChildScrollView(
+              child: SelectionArea(
+                child: Text(
+                  fullBody.isEmpty ? 'لديك إشعار جديد من الجمعية.' : fullBody,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 16, height: 1.65),
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('إغلاق'),
+            ),
+          ],
+        ),
+      );
+    });
+    // Ensure a frame is requested even when the tap arrives after startup.
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  void _openNotificationData(Map<String, dynamic> data,
+      {String? fallbackTitle, String? fallbackBody}) {
+    final url = _notificationDestination(data);
+    if (url != null) {
+      _openNotificationUrl(url);
+      return;
+    }
+    if ((data['screen'] ?? '').toString() == 'message') {
+      _showNotificationMessage(
+        (data['title'] ?? fallbackTitle ?? '').toString(),
+        (data['body'] ?? fallbackBody ?? '').toString(),
+      );
+    }
   }
 
   void _openNotificationNews(RemoteMessage message) {
-    final url = (message.data['url'] ?? message.data['link'] ?? '').toString();
-    _openNotificationUrl(url);
+    _openNotificationData(
+      message.data,
+      fallbackTitle: message.notification?.title,
+      fallbackBody: message.notification?.body,
+    );
   }
 
   bool _isPaymentUrl(String url) {
@@ -918,12 +1064,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   void _openNotificationUrl(String url) {
     if (!_validNewsUrl(url) || !mounted) return;
-    setState(() {
-      checkoutUrl = defaultTargetPlatform == TargetPlatform.iOS && _isPaymentUrl(url) ? null : url;
-      selectedItem = null;
-      wpSelectedCategory = null;
-      page = 4;
-    });
+    // WP posts open in the native detail screen; other HTTPS links in-app.
+    unawaited(_openSlideUrl(url));
   }
 
   // Open a slider destination as its actual content, not the news index.
@@ -984,14 +1126,43 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   }
 
   void _onLocalNotificationTap() {
-    final url = notificationTapUrl.value;
-    if (url == null || url.isEmpty) return;
+    final payload = notificationTapUrl.value;
+    if (payload == null || payload.isEmpty) return;
     notificationTapUrl.value = null;
-    _openNotificationUrl(url);
+    if (payload.startsWith('altaawun_message:')) {
+      try {
+        final decoded = jsonDecode(payload.substring('altaawun_message:'.length));
+        if (decoded is Map) {
+          _showNotificationMessage(
+            (decoded['title'] ?? '').toString(),
+            (decoded['body'] ?? '').toString(),
+          );
+          return;
+        }
+      } catch (error) {
+        debugPrint('Invalid notification message payload: $error');
+      }
+      return;
+    }
+    _openNotificationUrl(payload);
   }
 
   String _pushDiagnostic = 'جاري تسجيل الجهاز للإشعارات';
   bool _pushSetupRunning = false;
+  bool _pushListenersRegistered = false;
+
+  Future<void> _handleInitialPush(FirebaseMessaging messaging) async {
+    try {
+      final initial = await messaging.getInitialMessage();
+      if (initial != null && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _openNotificationNews(initial);
+        });
+      }
+    } catch (error) {
+      debugPrint('Initial push lookup failed: $error');
+    }
+  }
 
   Future<void> _setupPush() async {
     if (_pushSetupRunning) return;
@@ -1012,6 +1183,39 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       debugPrint('Notification authorization: ${permission.authorizationStatus}');
       if (mounted) setState(() => _pushDiagnostic = 'صلاحية الإشعارات: ${permission.authorizationStatus}');
       if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await messaging.setForegroundNotificationPresentationOptions(
+          alert: true, badge: true, sound: true,
+        );
+      }
+      // Register listeners before APNs registration completes.
+      if (!_pushListenersRegistered) {
+        _pushListenersRegistered = true;
+        FirebaseMessaging.onMessageOpenedApp.listen(_openNotificationNews);
+        unawaited(_handleInitialPush(messaging));
+        messaging.onTokenRefresh.listen((value) {
+          if (!mounted) return;
+          setState(() => _fcmToken = value);
+          unawaited(_syncNotificationToneTopic().catchError((Object error) {
+            debugPrint('Push topic refresh failed: $error');
+          }));
+        });
+        FirebaseMessaging.onMessage.listen((message) {
+          if (!mounted) return;
+          if (defaultTargetPlatform == TargetPlatform.android) {
+            unawaited(_showForegroundNotification(message));
+          }
+          final url = _notificationDestination(message.data);
+          final isMessage = (message.data['screen'] ?? '').toString() == 'message';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(message.notification?.title ?? 'إشعار جديد من الجمعية'),
+            action: (url == null && !isMessage) ? null : SnackBarAction(
+              label: isMessage && url == null ? 'عرض الرسالة' : 'قراءة الخبر',
+              onPressed: () => _openNotificationNews(message),
+            ),
+          ));
+        });
+      }
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
         // APNs registration is asynchronous on real iPhones. FCM token/topic
         // calls before the APNs token exists can fail and abort setup.
         String? apnsToken;
@@ -1030,26 +1234,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       final token = await messaging.getToken();
       if (mounted) setState(() { _fcmToken = token; _pushDiagnostic = token == null ? 'لم يُصدر Firebase رمز FCM' : 'تم تسجيل الجهاز بنجاح'; });
       try { await _syncNotificationToneTopic(); } catch (error) { debugPrint('Push topic sync failed: $error'); }
-      FirebaseMessaging.instance.onTokenRefresh.listen((value) {
-        if (mounted) setState(() => _fcmToken = value);
-      });
-      FirebaseMessaging.onMessageOpenedApp.listen(_openNotificationNews);
-      final initial = await messaging.getInitialMessage();
-      if (initial != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _openNotificationNews(initial));
-      }
-      FirebaseMessaging.onMessage.listen((message) {
-        if (!mounted) return;
-        _showForegroundNotification(message);
-        final url = (message.data['url'] ?? '').toString();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(message.notification?.title ?? 'إشعار جديد من الجمعية'),
-          action: _validNewsUrl(url) ? SnackBarAction(
-            label: 'قراءة الخبر',
-            onPressed: () => _openNotificationNews(message),
-          ) : null,
-        ));
-      });
+      // Foreground/tap/token listeners registered before APNs token retrieval.
     } catch (e) {
       debugPrint('FCM initialization: $e');
       if (mounted) setState(() => _pushDiagnostic = 'فشل تسجيل الإشعارات: $e');
@@ -1149,6 +1334,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Map<String, dynamic>? selectedItem;
   String? checkoutUrl;
   bool _isSlideDestination = false;
+  bool _quickDonationOpen = false;
   static const String _site = 'https://aytamaliraq.com';
 
   Future<void> _loadWordPressCategories({bool silent = false}) async {
@@ -1413,8 +1599,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     _loadAppSlides();
     _loadCategorySettings();
     _restoreRemoteTiles();
-    _loadNotificationPreferences();
-    _setupPush();
+    // Restore the saved topic preference before subscribing to Firebase topics.
+    unawaited(_restorePushPreferencesAndRegister());
     notificationTapUrl.addListener(_onLocalNotificationTap);
     WidgetsBinding.instance.addPostFrameCallback((_) => _onLocalNotificationTap());
     WidgetsBinding.instance.addObserver(this);
@@ -1443,6 +1629,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) {
       _loadWordPressCategories(silent: true);
       _loadRemoteTiles();
+      // APNs may register after the first startup attempt; retry on resume.
+      if (_fcmToken == null && !_pushSetupRunning) unawaited(_setupPush());
     }
   }
 
@@ -1753,7 +1941,60 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     setState(() { checkoutUrl = 'https://www.aytamaliraq.com/cart/'; _cartRefreshKey++; });
   }
 
-  void go(int value) => setState(() { page = value; customPage = null; wpSelectedCategory = null; selectedItem = null; checkoutUrl = null; _isSlideDestination = false; });
+  void _openQuickDonation() {
+    if (defaultTargetPlatform == TargetPlatform.iOS) return;
+    setState(() {
+      page = 3;
+      customPage = null;
+      wpSelectedCategory = null;
+      selectedItem = null;
+      checkoutUrl = null;
+      _isSlideDestination = false;
+      _quickDonationOpen = true;
+    });
+  }
+
+  void _openQuickDonationCheckout(String url) {
+    if (defaultTargetPlatform == TargetPlatform.iOS) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https' ||
+        !['aytamaliraq.com', 'www.aytamaliraq.com'].contains(uri.host.toLowerCase()) ||
+        !uri.queryParameters.containsKey('altaawun_qd') ||
+        !uri.queryParameters.containsKey('qd_sig')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('تعذر فتح رابط الدفع المعتمد من موقع الجمعية.'),
+      ));
+      return;
+    }
+    setState(() {
+      checkoutUrl = url;
+      _isSlideDestination = false;
+      _cartRefreshKey++;
+    });
+  }
+
+  Widget _quickDonationPage() => ListView(
+    padding: const EdgeInsets.all(14),
+    children: [
+      TextButton.icon(
+        onPressed: () => go(3),
+        icon: const Icon(Icons.arrow_forward),
+        label: const Text('العودة إلى التبرعات والمساهمات'),
+      ),
+      const SizedBox(height: 8),
+      AltaawunQuickDonation(onCheckoutUrl: _openQuickDonationCheckout),
+    ],
+  );
+
+  void go(int value) => setState(() {
+    page = value;
+    customPage = null;
+    wpSelectedCategory = null;
+    selectedItem = null;
+    checkoutUrl = null;
+    _isSlideDestination = false;
+    _quickDonationOpen = false;
+  });
   @override
   Widget build(BuildContext context) => Scaffold(
     // Only the homepage header uses the approved horizontal arrangement.
@@ -1844,6 +2085,22 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                         ),
                       ),
                     ),
+                    // The custom homepage AppBar must also expose the cart.
+                    // Previously only the secondary AppBar had this action.
+                    if (defaultTargetPlatform != TargetPlatform.iOS)
+                      IconButton(
+                        tooltip: 'سلة الكفالات والتبرعات',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 40, minHeight: 42),
+                        onPressed: _openCart,
+                        icon: Badge(
+                          isLabelVisible: _cartCount != null && _cartCount! > 0,
+                          label: Text((_cartCount ?? 0).toString()),
+                          child: const Icon(Icons.shopping_cart_outlined,
+                            color: Color(0xFF075C39)),
+                        ),
+                      ),
                     Builder(builder: (menuContext) => IconButton(
                       tooltip: 'القائمة',
                       padding: EdgeInsets.zero,
@@ -1931,9 +2188,11 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ])),
     ]))),
     body: Stack(children: [
-      IndexedStack(index: checkoutUrl == null || defaultTargetPlatform == TargetPlatform.iOS ? 0 : 1, children: [
-      selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
-      if (defaultTargetPlatform != TargetPlatform.iOS) _inAppCheckout() else const SizedBox.shrink(),
+      IndexedStack(index: checkoutUrl == null ||
+          (defaultTargetPlatform == TargetPlatform.iOS && !_isSlideDestination) ? 0 : 1, children: [
+      selectedItem != null ? _inAppDetails() : wpSelectedCategory != null ? _wordPressPosts() : _quickDonationOpen ? _quickDonationPage() : customPage != null ? _customSection(customPage!) : page == 0 ? _home() : page == 7 ? _accountPage() : _section(),
+      if (defaultTargetPlatform != TargetPlatform.iOS || _isSlideDestination)
+          _inAppCheckout() else const SizedBox.shrink(),
       ]),
       // Separate same-origin cart reader: initialise the badge when the app starts,
       // even if the customer has not opened the visible WooCommerce checkout.
@@ -1954,13 +2213,13 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       backgroundColor: Colors.white,
       surfaceTintColor: Colors.transparent,
       height: 72,
-      selectedIndex: [0, 1, 4, 3, 7].indexOf(page) < 0 ? 0 : [0, 1, 4, 3, 7].indexOf(page),
-      onDestinationSelected: (index) => go([0, 1, 4, 3, 7][index]),
+      selectedIndex: [0, 3, 4, 1, 7].indexOf(page) < 0 ? 0 : [0, 3, 4, 1, 7].indexOf(page),
+      onDestinationSelected: (index) => go([0, 3, 4, 1, 7][index]),
       destinations: const [
         NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'الرئيسية'),
         NavigationDestination(icon: Icon(Icons.favorite_border), label: 'تبرع'),
         NavigationDestination(icon: Icon(Icons.article_outlined), label: 'الأخبار'),
-        NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), label: 'المزيد'),
+        NavigationDestination(icon: Icon(Icons.volunteer_activism_outlined), label: 'كفالة'),
         NavigationDestination(icon: Icon(Icons.person_outline), label: 'حسابي'),
       ],
     ),
@@ -2024,6 +2283,26 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
       )),
     ])))),
+    if (defaultTargetPlatform != TargetPlatform.iOS)
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 2),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _openQuickDonation,
+            icon: const Icon(Icons.volunteer_activism_outlined, size: 25),
+            label: const Padding(
+              padding: EdgeInsets.symmetric(vertical: 11),
+              child: Text('تبرع الآن', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: green,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      ),
     Padding(padding: const EdgeInsets.all(12), child: Column(children: [
       GridView.count(
         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
@@ -2451,8 +2730,15 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       ] else if (page == 3) ...[
         if (defaultTargetPlatform == TargetPlatform.iOS) ...[
           const _IosDonationInformation(),
-        ] else
+        ] else ...[
+          FilledButton.icon(
+            onPressed: _openQuickDonation,
+            icon: const Icon(Icons.volunteer_activism_outlined),
+            label: const Text('تبرع الآن — التبرع السريع'),
+          ),
+          const SizedBox(height: 16),
           _donationCategories(),
+        ],
       ] else if (page == 4) ...[
         _newsFeed(),
       ] else if (page == 6) ...[

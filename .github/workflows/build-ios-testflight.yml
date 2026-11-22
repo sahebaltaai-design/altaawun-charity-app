@@ -20,10 +20,56 @@ jobs:
         with:
           channel: stable
 
+      - name: Generate matching app and APNs notification sounds
+        run: |
+          python3 - <<'PY'
+          import math, wave, struct
+          from pathlib import Path
+          out = Path('assets/tones')
+          out.mkdir(parents=True, exist_ok=True)
+          sr = 22050
+          tones = {
+              'urgent': [(880,.16),(0,.09),(1100,.18),(0,.08),(880,.23)],
+              'news': [(523,.22),(659,.22),(784,.32)],
+              'soft': [(392,.36),(523,.40)],
+              'default': [(660,.18),(0,.08),(660,.22)],
+          }
+          for name, notes in tones.items():
+              samples = []
+              for freq, duration in notes:
+                  count = int(sr * duration)
+                  for i in range(count):
+                      fade = min(1, i/(sr*.015), (count-i)/(sr*.045))
+                      v = 0 if not freq else math.sin(2*math.pi*freq*i/sr)*max(0,fade)*.3
+                      samples.append(struct.pack('<h', int(v*32767)))
+              with wave.open(str(out/f'{name}.wav'), 'wb') as f:
+                  f.setnchannels(1)
+                  f.setsampwidth(2)
+                  f.setframerate(sr)
+                  f.writeframes(b''.join(samples))
+          print('Created identical Android/iOS notification tone preview assets')
+          PY
+
       - name: Prepare iOS project
         run: |
           flutter create --platforms=ios --org com.altaawun --project-name altaawun_charity_app .
           flutter pub get
+
+      - name: Set iOS home screen app name to Altaawn
+        run: |
+          bash tool/configure_app_name.sh
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          path = Path('ios/Runner/Info.plist')
+          with path.open('rb') as f:
+              info = plistlib.load(f)
+          info['CFBundleDisplayName'] = 'Altaawn'
+          info['CFBundleName'] = 'Altaawn'
+          with path.open('wb') as f:
+              plistlib.dump(info, f)
+          print('iOS launcher label:', info['CFBundleDisplayName'])
+          PY
 
       - name: Generate iOS app icon from charity emblem
         run: |
@@ -37,7 +83,15 @@ jobs:
 
           source = Path('assets/png_style_emblem_the_same_arabic_logo_arched_em.png')
           emblem = Image.open(source).convert('RGBA')
-          mask = emblem.convert('RGB').convert('L').point(lambda pixel: 255 if pixel > 28 else 0)
+          # The source emblem has black outer canvas. Remove only dark pixels
+          # connected to the four exterior corners; preserve black lettering.
+          from PIL import ImageDraw
+          for corner in [(0, 0), (emblem.width - 1, 0),
+                         (0, emblem.height - 1),
+                         (emblem.width - 1, emblem.height - 1)]:
+              if max(emblem.getpixel(corner)[:3]) < 65:
+                  ImageDraw.floodfill(emblem, corner, (0, 0, 0, 0), thresh=42)
+          mask = emblem.getchannel('A')
           bounds = mask.getbbox()
           if bounds:
               left, top, right, bottom = bounds
@@ -55,13 +109,39 @@ jobs:
               scale = int(entry.get('scale', '1x').removesuffix('x'))
               width, height = round(width * scale), round(height * scale)
               filename = entry.setdefault('filename', f'CharityAppIcon-{width}x{height}.png')
-              icon = Image.new('RGBA', (width, height), (0, 0, 0, 255))
+              icon = Image.new('RGBA', (width, height), (255, 255, 255, 255))
               artwork = emblem.copy()
-              artwork.thumbnail((int(width * .94), int(height * .86)), Image.Resampling.LANCZOS)
+              artwork.thumbnail((int(width * .80), int(height * .82)), Image.Resampling.LANCZOS)
               icon.alpha_composite(artwork, ((width - artwork.width) // 2, (height - artwork.height) // 2))
               icon.convert('RGB').save(catalog / filename)
           contents_path.write_text(json.dumps(contents, indent=2) + '\n')
           PY
+
+      - name: Bundle APNs sound files in the signed iOS app
+        run: |
+          set -euo pipefail
+          for tone in urgent news soft; do
+            afconvert -f caff -d LEI16@22050 "assets/tones/${tone}.wav" "ios/Runner/altaawun_${tone}.caf"
+            test -s "ios/Runner/altaawun_${tone}.caf"
+          done
+          ruby <<'RUBY'
+          require 'xcodeproj'
+          project = Xcodeproj::Project.open('ios/Runner.xcodeproj')
+          runner = project.targets.find { |target| target.name == 'Runner' }
+          abort 'Runner target missing' unless runner
+          group = project.main_group.find_subpath('Runner', false)
+          abort 'Runner group missing' unless group
+          %w[urgent news soft].each do |tone|
+            filename = "altaawun_#{tone}.caf"
+            file = group.files.find { |reference| reference.path == filename }
+            file ||= group.new_file(filename)
+            unless runner.resources_build_phase.files_references.include?(file)
+              runner.resources_build_phase.add_file_reference(file, true)
+            end
+          end
+          project.save
+          puts 'APNs custom urgent/news/soft sound files included in Runner'
+          RUBY
 
       - name: Configure iOS privacy usage descriptions
         run: |
@@ -114,24 +194,57 @@ jobs:
           RUBY
           echo "Configured production APNs entitlement and remote notification background mode"
 
-      - name: Ensure native iOS APNs registration
+      - name: Ensure native iOS APNs registration and Firebase token forwarding
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           path = Path('ios/Runner/AppDelegate.swift')
           source = path.read_text()
-          if 'import UserNotifications' not in source:
-              source = source.replace('import UIKit', 'import UIKit\nimport UserNotifications')
+          if 'import FirebaseMessaging' not in source:
+              source = source.replace('import UIKit', 'import UIKit\nimport FirebaseMessaging')
           if 'application.registerForRemoteNotifications()' not in source:
-              source = source.replace(
-                  'GeneratedPluginRegistrant.register(with: self)',
-                  '''GeneratedPluginRegistrant.register(with: self)
-              UNUserNotificationCenter.current().delegate = self
-              application.registerForRemoteNotifications()'''
-              )
+              import re
+              # Match Flutter's current Swift AppDelegate formatting without
+              # depending on plugin registration being in didFinishLaunching.
+              pattern = r'(override\s+func\s+application\s*\(\s*_\s+application:\s*UIApplication,\s*didFinishLaunchingWithOptions[\s\S]*?\)\s*->\s*Bool\s*\{)'
+              match = re.search(pattern, source)
+              if match:
+                  source = source[:match.end()] + '\n    application.registerForRemoteNotifications()' + source[match.end():]
+              else:
+                  class_match = re.search(r'\bclass\s+AppDelegate\s*:\s*[^\\{]*FlutterAppDelegate[^\\{]*\\{', source)
+                  if not class_match:
+                      raise RuntimeError('Unable to locate FlutterAppDelegate subclass; inspect ios/Runner/AppDelegate.swift')
+                  method = """
+            override func application(_ application: UIApplication,
+              didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+              application.registerForRemoteNotifications()
+              return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+            }
+          """
+                  source = source[:class_match.end()] + '\n' + method + source[class_match.end():]
+          if 'didRegisterForRemoteNotificationsWithDeviceToken' not in source:
+              pos = source.rfind('}')
+              if pos < 0:
+                  raise RuntimeError('Unable to locate AppDelegate closing brace')
+              callbacks = """
+            override func application(_ application: UIApplication,
+              didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+              Messaging.messaging().apnsToken = deviceToken
+              NSLog("Altaawun APNs registration succeeded; token length: %d", deviceToken.count)
+              super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+            }
+
+            override func application(_ application: UIApplication,
+              didFailToRegisterForRemoteNotificationsWithError error: Error) {
+              NSLog("Altaawun APNs registration failed: %@", error.localizedDescription)
+              super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+            }
+          """
+              source = source[:pos] + callbacks + source[pos:]
           path.write_text(source)
-          print('Registered iOS application for remote notifications at startup')
+          assert 'Messaging.messaging().apnsToken = deviceToken' in source
+          print('APNs registration and Firebase token forwarding configured')
           PY
 
       - name: Bundle Firebase iOS configuration
@@ -225,7 +338,7 @@ jobs:
 
       - name: Build signed IPA
         run: |
-          flutter build ipa --release --build-name=1.0.20 --build-number=251 --export-options-plist=ios/ExportOptions.plist
+          flutter build ipa --release --build-name=1.0.21 --build-number=254 --export-options-plist=ios/ExportOptions.plist
 
       - name: Save IPA artifact
         uses: actions/upload-artifact@v4

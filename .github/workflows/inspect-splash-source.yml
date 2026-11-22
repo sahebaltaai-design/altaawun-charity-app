@@ -1,0 +1,27 @@
+name: Inspect Original Splash Artwork
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/inspect-splash-source.yml'
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report source image geometry
+        run: |
+          python3 - <<'PY'
+          import struct
+          from pathlib import Path
+          for path in ['assets/welcome_background-2.png','assets/png_style_emblem_the_same_arabic_logo_arched_em.png']:
+              data=Path(path).read_bytes()
+              w,h=struct.unpack('>II',data[16:24])
+              print(path, w, h, 'bytes',len(data))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: altaawun-original-splash-artwork
+          path: |
+            assets/welcome_background-2.png
+            assets/png_style_emblem_the_same_arabic_logo_arched_em.png

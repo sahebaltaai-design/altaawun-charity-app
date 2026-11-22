@@ -3,6 +3,13 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'tool/configure_app_name.sh'
+      - 'android/app/src/main/res/values/strings.xml'
+      - 'pubspec.yaml'
+      - '.github/workflows/build-apk.yml'
   push:
     branches:
       - main
@@ -122,21 +129,24 @@ jobs:
           if not src.is_file():
               raise SystemExit('Missing uploaded charity icon: assets/png_style_emblem_the_same_arabic_logo_arched_em.png')
           im = Image.open(src).convert('RGBA')
-          # The uploaded image contains wide black margins around the emblem.
-          # Crop the visible non-black artwork before scaling it.
-          from PIL import ImageChops
-          rgb = im.convert('RGB')
-          mask = rgb.convert('L').point(lambda p: 255 if p > 28 else 0)
-          box = mask.getbbox()
+          # Remove only the source image's outer black canvas, not the
+          # black Arabic lettering inside the emblem.
+          from PIL import ImageDraw
+          for corner in [(0, 0), (im.width - 1, 0),
+                         (0, im.height - 1),
+                         (im.width - 1, im.height - 1)]:
+              if max(im.getpixel(corner)[:3]) < 65:
+                  ImageDraw.floodfill(im, corner, (0, 0, 0, 0), thresh=42)
+          box = im.getchannel('A').getbbox()
           if box:
               margin = max(2, int(max(box[2]-box[0],box[3]-box[1]) * .06))
               im = im.crop((max(0,box[0]-margin),max(0,box[1]-margin),
                             min(im.width,box[2]+margin),min(im.height,box[3]+margin)))
           root = Path('android/app/src/main/res')
           for suffix, size in [('mdpi',48),('hdpi',72),('xhdpi',96),('xxhdpi',144),('xxxhdpi',192)]:
-              out = Image.new('RGBA',(size,size),(0,0,0,255))
+              out = Image.new('RGBA',(size,size),(255,255,255,255))
               icon = im.copy()
-              icon.thumbnail((int(size*.94),int(size*.86)),Image.Resampling.LANCZOS)
+              icon.thumbnail((int(size*.80),int(size*.82)),Image.Resampling.LANCZOS)
               out.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
               dest=root/('mipmap-'+suffix)
               dest.mkdir(parents=True,exist_ok=True)
@@ -147,36 +157,100 @@ jobs:
           size=432
           out=Image.new('RGBA',(size,size),(0,0,0,0))
           icon=im.copy()
-          icon.thumbnail((350,350),Image.Resampling.LANCZOS)
+          icon.thumbnail((312,312),Image.Resampling.LANCZOS)
           out.alpha_composite(icon,((size-icon.width)//2,(size-icon.height)//2))
           out.save(fg/'altaawun_launcher_foreground.png')
           adaptive=root/'mipmap-anydpi-v26'
           adaptive.mkdir(parents=True,exist_ok=True)
           xml='''<?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-              <background android:drawable="@android:color/black"/>
+              <background android:drawable="@android:color/white"/>
               <foreground android:drawable="@drawable/altaawun_launcher_foreground"/>
           </adaptive-icon>'''
           (adaptive/'ic_launcher.xml').write_text(xml,encoding='utf-8')
           PY
 
-      - name: Remove screenshot status bar from welcome background
+      - name: Minimize mandatory Android system splash and match school artwork
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          root = Path('android/app/src/main/res')
+          android_uri = 'http://schemas.android.com/apk/res/android'
+          ET.register_namespace('android', android_uri)
+          key = lambda x: '{' + android_uri + '}' + x
+          def ensure_item(style, name, value):
+              child = next((el for el in style.findall('item') if el.get('name') == name), None)
+              if child is None:
+                  child = ET.SubElement(style, 'item', {'name': name})
+              child.text = value
+          def ensure_launch_theme(path):
+              path.parent.mkdir(parents=True, exist_ok=True)
+              if path.exists():
+                  tree = ET.parse(path)
+                  resources = tree.getroot()
+              else:
+                  resources = ET.Element('resources')
+                  tree = ET.ElementTree(resources)
+              style = next((el for el in resources.findall('style') if el.get('name') == 'LaunchTheme'), None)
+              if style is None:
+                  style = ET.SubElement(resources, 'style', {'name': 'LaunchTheme', 'parent': '@android:style/Theme.Light.NoTitleBar'})
+              return tree, style
+
+          # On Android 12+, the OS must show a brief native starting window.
+          # Replace its oversized icon with a transparent drawable and a sky-
+          # colored background. The real school photo follows immediately.
+          drawable = root / 'drawable'
+          drawable.mkdir(parents=True, exist_ok=True)
+          (drawable / 'empty_splash_icon.xml').write_text(
+              '<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">'
+              '<solid android:color="@android:color/transparent"/></shape>',
+              encoding='utf-8')
+          tree, style = ensure_launch_theme(root / 'values-v31/styles.xml')
+          ensure_item(style, 'android:windowSplashScreenBackground', '@android:color/white')
+          ensure_item(style, 'android:windowSplashScreenAnimatedIcon', '@mipmap/ic_launcher')
+          ensure_item(style, 'android:windowSplashScreenIconBackgroundColor', '@android:color/white')
+          tree.write(root / 'values-v31/styles.xml', encoding='utf-8', xml_declaration=True)
+
+          # On older versions the launch window can directly show the school
+          # background, avoiding a separate white page with a centered emblem.
+          tree, style = ensure_launch_theme(root / 'values/styles.xml')
+          ensure_item(style, 'android:windowBackground', '@drawable/school_launch_background')
+          tree.write(root / 'values/styles.xml', encoding='utf-8', xml_declaration=True)
+          (drawable / 'school_launch_background.xml').write_text(
+              '<layer-list xmlns:android="http://schemas.android.com/apk/res/android">'
+              '<item><bitmap android:gravity="fill" android:src="@drawable/school_splash"/></item>'
+              '</layer-list>', encoding='utf-8')
+          print('Native Android starting window prepared; Flutter owns actual school welcome screen')
+          PY
+
+      - name: Remove only captured status bar and unused green footer from splash
         run: |
           python3 - <<'PY'
           from PIL import Image
           from pathlib import Path
           p = Path('assets/welcome_background-2.png')
           image = Image.open(p).convert('RGB')
-          # Source artwork is a phone screenshot; remove the top status strip.
-          # Preserve original dimensions to keep the splash layout consistent.
-          top = round(image.height * 0.065)
-          clean = image.crop((0, top, image.width, image.height))
-          clean = clean.resize(image.size, Image.Resampling.LANCZOS)
+          # Remove the old captured phone status bar. Keep most of the
+          # built-in green footer to provide a natural area for the caption.
+          # This yields an almost phone-sized aspect ratio, requiring only
+          # mild stretching in the no-crop smart-fit mode. Never crop the
+          # crest, charity name, school, pupils or colored lower ribbon.
+          top = round(image.height * 0.035)
+          bottom = round(image.height * 0.94)
+          if bottom <= top or bottom > image.height:
+              raise SystemExit('Unexpected source splash dimensions')
+          clean = image.crop((0, top, image.width, bottom))
           clean.save(p, 'PNG', optimize=True)
+          # Use this SAME artwork for the pre-Android-12 native launch window.
+          native = Path('android/app/src/main/res/drawable-nodpi/school_splash.png')
+          native.parent.mkdir(parents=True, exist_ok=True)
+          clean.save(native, 'PNG', optimize=True)
+          print(f'Splash prepared: {image.size} -> {clean.size}, artwork preserved')
           PY
 
       - name: Configure release signing for Play Store
-        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        if: ${{ github.event_name != 'pull_request' && env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -211,7 +285,7 @@ jobs:
           PY
 
       - name: Build signed Play Store AAB
-        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        if: ${{ github.event_name != 'pull_request' && env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -220,7 +294,7 @@ jobs:
         run: flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
 
       - name: Upload signed Play Store AAB
-        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
+        if: ${{ github.event_name != 'pull_request' && env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
