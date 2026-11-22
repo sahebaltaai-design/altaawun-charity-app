@@ -102,6 +102,35 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Work around webview Android Lint crash in release builds
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          plugins = json.loads(Path('.flutter-plugins-dependencies').read_text())
+          matches = [entry for entry in plugins.get('plugins', {}).get('android', [])
+                     if entry.get('name') == 'webview_flutter_android']
+          if len(matches) != 1:
+              raise SystemExit('Expected exactly one webview_flutter_android plugin')
+          gradle = Path(matches[0]['path']) / 'android' / 'build.gradle'
+          if not gradle.is_file():
+              raise SystemExit(f'Expected plugin Gradle file: {gradle}')
+          content = gradle.read_text()
+          # AGP's lintVitalAnalyzeRelease crashes inside Kotlin/UAST for this
+          # third-party plugin. Skip only that plugin's release lint task;
+          # app compilation, signing and all other lint tasks stay enabled.
+          marker = "// Altaawun CI workaround: plugin release lint crash"
+          if marker not in content:
+              content += ("\\n" + marker + "\\n"
+                          + "tasks.configureEach { task ->\\n"
+                          + "    if (task.name == 'lintVitalAnalyzeRelease') {\\n"
+                          + "        task.enabled = false\\n"
+                          + "    }\\n"
+                          + "}\\n")
+              gradle.write_text(content)
+          print(f'Applied targeted lint workaround to {gradle}')
+          PY
+
       - name: Enable Android core library desugaring
         run: |
           python3 - <<'PY'
