@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       build_number:
-        description: 'Unique App Store Connect build number'
+        description: 'Use auto for a unique build number, or enter a higher unused number'
         required: true
-        default: '356'
+        default: 'auto'
         type: string
 
 permissions:
@@ -347,15 +347,18 @@ jobs:
           IOS_BUILD_NUMBER: ${{ inputs.build_number }}
         run: |
           set -euo pipefail
+          if [ "$IOS_BUILD_NUMBER" = auto ]; then
+            IOS_BUILD_NUMBER=$((1000 + GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))
+          fi
           [[ "$IOS_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
-          test "$IOS_BUILD_NUMBER" -gt 352
+          test "$IOS_BUILD_NUMBER" -gt 356
+          echo "EXPECTED_IOS_BUILD_NUMBER=$IOS_BUILD_NUMBER" >> "$GITHUB_ENV"
+          echo "Building iOS build $IOS_BUILD_NUMBER"
           VERSION=$(sed -n 's/^version: \([0-9.]*\)+[0-9]*$/\1/p' pubspec.yaml)
           test -n "$VERSION"
           flutter build ipa --release --build-name="$VERSION" --build-number="$IOS_BUILD_NUMBER" --export-options-plist=ios/ExportOptions.plist
 
       - name: Verify actual IPA version before upload
-        env:
-          IOS_BUILD_NUMBER: ${{ inputs.build_number }}
         run: |
           python3 - <<'PY'
           import os, plistlib, zipfile, re
@@ -364,7 +367,7 @@ jobs:
           with zipfile.ZipFile(ipa) as archive:
               name, = [n for n in archive.namelist() if re.fullmatch(r'Payload/[^/]+\.app/Info\.plist', n)]
               info = plistlib.loads(archive.read(name))
-          expected = os.environ['IOS_BUILD_NUMBER']
+          expected = os.environ['EXPECTED_IOS_BUILD_NUMBER']
           version = re.search(r'^version:\s*([0-9.]+)\+', Path('pubspec.yaml').read_text(), re.M).group(1)
           print('IPA version:', info['CFBundleShortVersionString'], 'build:', info['CFBundleVersion'])
           assert str(info['CFBundleVersion']) == expected, 'IPA build number mismatch'
