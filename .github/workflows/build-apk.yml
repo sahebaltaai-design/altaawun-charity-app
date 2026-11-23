@@ -33,10 +33,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Cache Gradle dependencies
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
       - name: Generate preview notification sounds
         run: |
@@ -332,7 +336,21 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
+        run: |
+          set -o pipefail
+          for attempt in 1 2 3 4; do
+            if flutter build appbundle --release --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha 2>&1 | tee "$RUNNER_TEMP/altaawun-gradle-build.log"; then
+              exit 0
+            fi
+            if ! grep -Eqi '429|Too Many Requests|Gradle threw an error while downloading artifacts' "$RUNNER_TEMP/altaawun-gradle-build.log"; then
+              exit 1
+            fi
+            if [ "$attempt" -eq 4 ]; then exit 1; fi
+            delay=$((attempt * 60))
+            echo "Dependency download failed; retrying in ${delay}s"
+            sleep "$delay"
+          done
+          exit 1
 
       - name: Upload signed Play Store AAB
         if: ${{ github.event_name != 'pull_request' && env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
@@ -347,7 +365,21 @@ jobs:
           path: build/app/outputs/bundle/release/app-release.aab
 
       - name: Build APK
-        run: flutter build apk --debug --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha
+        run: |
+          set -o pipefail
+          for attempt in 1 2 3 4; do
+            if flutter build apk --debug --build-number=${{ github.run_number }} --dart-define=ALTAAWUN_UPDATE_CHANNEL=alpha 2>&1 | tee "$RUNNER_TEMP/altaawun-gradle-build.log"; then
+              exit 0
+            fi
+            if ! grep -Eqi '429|Too Many Requests|Gradle threw an error while downloading artifacts' "$RUNNER_TEMP/altaawun-gradle-build.log"; then
+              exit 1
+            fi
+            if [ "$attempt" -eq 4 ]; then exit 1; fi
+            delay=$((attempt * 60))
+            echo "Dependency download failed; retrying in ${delay}s"
+            sleep "$delay"
+          done
+          exit 1
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
