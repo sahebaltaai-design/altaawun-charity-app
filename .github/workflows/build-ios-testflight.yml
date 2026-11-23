@@ -2,6 +2,12 @@ name: Build iOS IPA and TestFlight
 
 on:
   workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Unique App Store Connect build number'
+        required: true
+        default: '352'
+        type: string
 
 permissions:
   contents: read
@@ -337,8 +343,14 @@ jobs:
           xcodebuild -list -project ios/Runner.xcodeproj
 
       - name: Build signed IPA
+        env:
+          IOS_BUILD_NUMBER: ${{ inputs.build_number }}
         run: |
-          flutter build ipa --release --build-name=1.0.21 --build-number=254 --export-options-plist=ios/ExportOptions.plist
+          set -euo pipefail
+          [[ "$IOS_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          VERSION=$(sed -n 's/^version: \([0-9.]*\)+[0-9]*$/\1/p' pubspec.yaml)
+          test -n "$VERSION"
+          flutter build ipa --release --build-name="$VERSION" --build-number="$IOS_BUILD_NUMBER" --export-options-plist=ios/ExportOptions.plist
 
       - name: Save IPA artifact
         uses: actions/upload-artifact@v4
