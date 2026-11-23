@@ -1038,7 +1038,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       _openNotificationUrl(url);
       return;
     }
-    if ((data['screen'] ?? '').toString() == 'message') {
+    if ((data['screen'] ?? '').toString() == 'message' ||
+        (defaultTargetPlatform == TargetPlatform.iOS && (fallbackTitle != null || fallbackBody != null))) {
       _showNotificationMessage(
         (data['title'] ?? fallbackTitle ?? '').toString(),
         (data['body'] ?? fallbackBody ?? '').toString(),
@@ -1150,6 +1151,18 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   String _pushDiagnostic = 'جاري تسجيل الجهاز للإشعارات';
   bool _pushSetupRunning = false;
   bool _pushListenersRegistered = false;
+  bool _pushTopicReady = false;
+  Timer? _pushRetryTimer;
+  int _pushRetryCount = 0;
+
+  void _schedulePushRetry() {
+    if (!mounted || defaultTargetPlatform != TargetPlatform.iOS || _pushRetryCount >= 5) return;
+    _pushRetryTimer?.cancel();
+    _pushRetryCount++;
+    _pushRetryTimer = Timer(Duration(seconds: 15 * _pushRetryCount), () {
+      if (mounted) unawaited(_setupPush());
+    });
+  }
 
   Future<void> _handleInitialPush(FirebaseMessaging messaging) async {
     try {
@@ -1158,6 +1171,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _openNotificationNews(initial);
         });
+        WidgetsBinding.instance.scheduleFrame();
       }
     } catch (error) {
       debugPrint('Initial push lookup failed: $error');
@@ -1167,6 +1181,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   Future<void> _setupPush() async {
     if (_pushSetupRunning) return;
     _pushSetupRunning = true;
+    _pushTopicReady = false;
     if (mounted) setState(() => _pushDiagnostic = 'جاري تهيئة Firebase');
     try {
       // A failed Firebase startup must not permanently prevent push setup.
@@ -1233,13 +1248,19 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       }
       final token = await messaging.getToken();
       if (mounted) setState(() { _fcmToken = token; _pushDiagnostic = token == null ? 'لم يُصدر Firebase رمز FCM' : 'تم تسجيل الجهاز بنجاح'; });
-      try { await _syncNotificationToneTopic(); } catch (error) { debugPrint('Push topic sync failed: $error'); }
+      if (token != null && token.isNotEmpty) {
+        await _syncNotificationToneTopic();
+        _pushTopicReady = true;
+        _pushRetryCount = 0;
+        _pushRetryTimer?.cancel();
+      }
       // Foreground/tap/token listeners registered before APNs token retrieval.
     } catch (e) {
       debugPrint('FCM initialization: $e');
       if (mounted) setState(() => _pushDiagnostic = 'فشل تسجيل الإشعارات: $e');
     } finally {
       _pushSetupRunning = false;
+      if (!_pushTopicReady) _schedulePushRetry();
     }
   }
   DateTime? _lastCategoryFetch;
@@ -1630,13 +1651,17 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       _loadWordPressCategories(silent: true);
       _loadRemoteTiles();
       // APNs may register after the first startup attempt; retry on resume.
-      if (_fcmToken == null && !_pushSetupRunning) unawaited(_setupPush());
+      if (!_pushSetupRunning && (_fcmToken == null || defaultTargetPlatform == TargetPlatform.iOS)) {
+        _pushRetryCount = 0;
+        unawaited(_setupPush());
+      }
     }
   }
 
   @override
   void dispose() {
     _slideTimer?.cancel();
+    _pushRetryTimer?.cancel();
     notificationTapUrl.removeListener(_onLocalNotificationTap);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
