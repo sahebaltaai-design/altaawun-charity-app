@@ -6,7 +6,7 @@ on:
       build_number:
         description: 'Unique App Store Connect build number'
         required: true
-        default: '352'
+        default: '356'
         type: string
 
 permissions:
@@ -348,9 +348,28 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$IOS_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          test "$IOS_BUILD_NUMBER" -gt 352
           VERSION=$(sed -n 's/^version: \([0-9.]*\)+[0-9]*$/\1/p' pubspec.yaml)
           test -n "$VERSION"
           flutter build ipa --release --build-name="$VERSION" --build-number="$IOS_BUILD_NUMBER" --export-options-plist=ios/ExportOptions.plist
+
+      - name: Verify actual IPA version before upload
+        env:
+          IOS_BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          python3 - <<'PY'
+          import os, plistlib, zipfile, re
+          from pathlib import Path
+          ipa, = Path('build/ios/ipa').glob('*.ipa')
+          with zipfile.ZipFile(ipa) as archive:
+              name, = [n for n in archive.namelist() if re.fullmatch(r'Payload/[^/]+\.app/Info\.plist', n)]
+              info = plistlib.loads(archive.read(name))
+          expected = os.environ['IOS_BUILD_NUMBER']
+          version = re.search(r'^version:\s*([0-9.]+)\+', Path('pubspec.yaml').read_text(), re.M).group(1)
+          print('IPA version:', info['CFBundleShortVersionString'], 'build:', info['CFBundleVersion'])
+          assert str(info['CFBundleVersion']) == expected, 'IPA build number mismatch'
+          assert info['CFBundleShortVersionString'] == version, 'IPA release version mismatch'
+          PY
 
       - name: Save IPA artifact
         uses: actions/upload-artifact@v4
