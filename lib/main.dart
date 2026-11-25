@@ -32,6 +32,9 @@ Future<void> _initializeStartupServices() async {
   // Optional notification services must never block the first Flutter frame.
   try {
     await Firebase.initializeApp();
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await _registerEarlyIosTaps();
+    }
   } catch (error) {
     debugPrint('Firebase unavailable at startup: $error');
   }
@@ -39,6 +42,25 @@ Future<void> _initializeStartupServices() async {
     await _initializeNotificationChannels();
   } catch (error) {
     debugPrint('Notification channels unavailable at startup: $error');
+  }
+}
+
+final ValueNotifier<RemoteMessage?> _pendingIosTap = ValueNotifier<RemoteMessage?>(null);
+bool _iosTapListenerReady = false;
+bool _iosInitialLookupDone = false;
+Future<void> _registerEarlyIosTaps() async {
+  if (!_iosTapListenerReady) {
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      _pendingIosTap.value = message;
+    });
+    _iosTapListenerReady = true;
+  }
+  if (!_iosInitialLookupDone) {
+    final initial = await FirebaseMessaging.instance.getInitialMessage();
+    _iosInitialLookupDone = true;
+    if (initial != null && _pendingIosTap.value == null) {
+      _pendingIosTap.value = initial;
+    }
   }
 }
 
@@ -1126,6 +1148,16 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     });
   }
 
+  void _consumeIosTap() {
+    if (!mounted || _pendingIosTap.value == null) return;
+    final message = _pendingIosTap.value!;
+    _pendingIosTap.value = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openNotificationNews(message);
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
   void _onLocalNotificationTap() {
     final payload = notificationTapUrl.value;
     if (payload == null || payload.isEmpty) return;
@@ -1292,8 +1324,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       // Register listeners before APNs registration completes.
       if (!_pushListenersRegistered) {
         _pushListenersRegistered = true;
-        FirebaseMessaging.onMessageOpenedApp.listen(_openNotificationNews);
-        unawaited(_handleInitialPush(messaging));
+        if (defaultTargetPlatform == TargetPlatform.iOS) {
+          await _registerEarlyIosTaps();
+        } else {
+          FirebaseMessaging.onMessageOpenedApp.listen(_openNotificationNews);
+          unawaited(_handleInitialPush(messaging));
+        }
         messaging.onTokenRefresh.listen((value) {
           if (!mounted) return;
           setState(() => _fcmToken = value);
@@ -1711,6 +1747,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     _restoreRemoteTiles();
     // Restore the saved topic preference before subscribing to Firebase topics.
     unawaited(_restorePushPreferencesAndRegister());
+    _pendingIosTap.addListener(_consumeIosTap);
+    _consumeIosTap();
     notificationTapUrl.addListener(_onLocalNotificationTap);
     WidgetsBinding.instance.addPostFrameCallback((_) => _onLocalNotificationTap());
     WidgetsBinding.instance.addObserver(this);
@@ -1752,6 +1790,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   void dispose() {
     _slideTimer?.cancel();
     _pushRetryTimer?.cancel();
+    _pendingIosTap.removeListener(_consumeIosTap);
     notificationTapUrl.removeListener(_onLocalNotificationTap);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
