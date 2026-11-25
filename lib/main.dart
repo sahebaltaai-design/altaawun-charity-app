@@ -1148,6 +1148,93 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     _openNotificationUrl(payload);
   }
 
+
+  List<Map<String, dynamic>> _inbox = [];
+  Set<String> _readInbox = {};
+  Set<String> _hiddenInbox = {};
+  bool _inboxBusy = false;
+  String _inboxId(Map<String, dynamic> item) => (item['notification_id'] ?? '').toString();
+  int get _unreadInbox => _inbox.where((item) => !_readInbox.contains(_inboxId(item)) && !_hiddenInbox.contains(_inboxId(item))).length;
+  Future<void> _refreshInbox() async {
+    if (_inboxBusy) return;
+    _inboxBusy = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _readInbox = (prefs.getStringList('inbox_read_v1') ?? []).toSet();
+      _hiddenInbox = (prefs.getStringList('inbox_hidden_v1') ?? []).toSet();
+      final cached = prefs.getString('inbox_cache_v1');
+      if (cached != null && mounted) {
+        setState(() => _inbox = (jsonDecode(cached) as List).map((e) => Map<String, dynamic>.from(e as Map)).toList());
+      }
+      final response = await http.get(Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun/v1/notifications?per_page=100')).timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return;
+      final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map;
+      final items = (data['items'] as List).map((e) => Map<String, dynamic>.from(e as Map)).where((e) => _inboxId(e).isNotEmpty).toList();
+      await prefs.setString('inbox_cache_v1', jsonEncode(items));
+      if (mounted) setState(() => _inbox = items);
+    } catch (error) {
+      debugPrint('Inbox refresh: $error');
+    } finally {
+      _inboxBusy = false;
+    }
+  }
+  Future<void> _saveInboxState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('inbox_read_v1', _readInbox.toList());
+    await prefs.setStringList('inbox_hidden_v1', _hiddenInbox.toList());
+  }
+  Widget _inboxIcon() => Badge(
+    isLabelVisible: _unreadInbox > 0,
+    label: Text(_unreadInbox.toString()),
+    child: const Icon(Icons.notifications_outlined, color: green),
+  );
+  Future<void> _showInbox() async {
+    await _refreshInbox();
+    if (!mounted) return;
+    await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
+      builder: (context, refreshDialog) {
+        final items = _inbox.where((e) => !_hiddenInbox.contains(_inboxId(e))).toList();
+        return AlertDialog(
+          title: const Text('الإشعارات'),
+          content: SizedBox(width: 420, height: 420, child: items.isEmpty
+            ? const Center(child: Text('لا توجد إشعارات'))
+            : ListView.builder(itemCount: items.length, itemBuilder: (_, index) {
+                final item = items[index];
+                final id = _inboxId(item);
+                final read = _readInbox.contains(id);
+                final image = (item['image'] ?? '').toString();
+                final date = DateTime.tryParse((item['created_at'] ?? '').toString())?.toLocal();
+                return ListTile(
+                  leading: image.isEmpty ? Icon(read ? Icons.notifications_none : Icons.notifications_active, color: green)
+                    : Image.network(image, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.notifications)),
+                  title: Text((item['title'] ?? '').toString(), style: TextStyle(fontWeight: read ? FontWeight.normal : FontWeight.bold)),
+                  subtitle: Text('${item['body'] ?? ''}\n${date?.toString().split('.').first ?? ''}', maxLines: 3, overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () {
+                    setState(() => _hiddenInbox.add(id));
+                    refreshDialog(() {});
+                    unawaited(_saveInboxState());
+                  }),
+                  onTap: () {
+                    setState(() => _readInbox.add(id));
+                    unawaited(_saveInboxState());
+                    Navigator.of(dialogContext).pop();
+                    _openNotificationData(item);
+                  },
+                );
+              })),
+          actions: [
+            TextButton(onPressed: () {
+              setState(() => _readInbox.addAll(items.map(_inboxId)));
+              refreshDialog(() {});
+              unawaited(_saveInboxState());
+            }, child: const Text('تحديد الكل كمقروء')),
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('إغلاق')),
+          ],
+        );
+      },
+    ));
+  }
+
   String _pushDiagnostic = 'جاري تسجيل الجهاز للإشعارات';
   bool _pushSetupRunning = false;
   bool _pushListenersRegistered = false;
@@ -1216,6 +1303,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         });
         FirebaseMessaging.onMessage.listen((message) {
           if (!mounted) return;
+          unawaited(_refreshInbox());
           if (defaultTargetPlatform == TargetPlatform.android) {
             unawaited(_showForegroundNotification(message));
           }
@@ -1617,6 +1705,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   @override
   void initState() {
     super.initState();
+    unawaited(_refreshInbox());
     _loadAppSlides();
     _loadCategorySettings();
     _restoreRemoteTiles();
@@ -1648,6 +1737,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshInbox());
       _loadWordPressCategories(silent: true);
       _loadRemoteTiles();
       // APNs may register after the first startup attempt; retry on resume.
@@ -2084,31 +2174,8 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(
                         minWidth: 36, minHeight: 42),
-                      icon: const Icon(Icons.notifications_outlined,
-                        color: Color(0xFF075C39)),
-                      onPressed: () => showDialog<void>(
-                        context: context,
-                        builder: (dialogContext) => AlertDialog(
-                          title: const Text('الإشعارات'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('رمز الجهاز للاختبار عبر Firebase. لا يوجد سجل إشعارات محفوظ حتى الآن.'),
-                              const SizedBox(height: 12),
-                              SelectableText(
-                                _fcmToken ?? 'لم يتوفر رمز FCM بعد. تأكد من اتصال الإنترنت والسماح بالإشعارات.',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(dialogContext).pop(),
-                              child: const Text('إغلاق'),
-                            ),
-                          ],
-                        ),
-                      ),
+                      icon: _inboxIcon(),
+                      onPressed: _showInbox,
                     ),
                     // The custom homepage AppBar must also expose the cart.
                     // Previously only the secondary AppBar had this action.
@@ -2166,20 +2233,9 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         ),
       ), if (page == 0) IconButton(
         tooltip: 'الإشعارات',
-        onPressed: () => showDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('الإشعارات'),
-            content: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Text('رمز الجهاز للاختبار عبر Firebase. لا يوجد سجل إشعارات محفوظ حتى الآن.'),
-              const SizedBox(height: 12),
-              SelectableText(_fcmToken ?? 'لم يتوفر رمز FCM بعد. تأكد من اتصال الإنترنت والسماح بالإشعارات.',
-                style: const TextStyle(fontSize: 12)),
-            ]),
-            actions: [TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('إغلاق'),
-            )],
+        onPressed: _showInbox,
+        icon: _inboxIcon(),
+      )],
           ),
         ),
         icon: const Icon(Icons.notifications_outlined, color: green),
