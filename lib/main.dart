@@ -1091,11 +1091,47 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   }
 
   void _openNotificationNews(RemoteMessage message) {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      unawaited(_openIosNotificationFromInbox(message));
+      return;
+    }
     _openNotificationData(
       message.data,
       fallbackTitle: message.notification?.title,
       fallbackBody: message.notification?.body,
     );
+  }
+
+  Future<void> _openIosNotificationFromInbox(RemoteMessage message) async {
+    final data = Map<String, dynamic>.from(message.data);
+    final id = (data['notification_id'] ?? '').toString();
+    final title = (data['title'] ?? message.notification?.title ?? '').toString().trim();
+    final body = (data['body'] ?? message.notification?.body ?? '').toString().trim();
+    Map<String, dynamic>? match;
+    if (_notificationDestination(data) == null) {
+      try {
+        final response = await http.get(Uri.parse('https://www.aytamaliraq.com/wp-json/altaawun/v1/notifications?per_page=100')).timeout(const Duration(seconds: 8));
+        if (response.statusCode == 200) {
+          final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as Map;
+          final items = (decoded['items'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          final matches = items.where((item) => id.isNotEmpty
+              ? _inboxId(item) == id
+              : title.isNotEmpty && body.isNotEmpty &&
+                (item['title'] ?? '').toString().trim() == title &&
+                (item['body'] ?? '').toString().trim() == body).toList();
+          if (matches.length == 1) match = matches.first;
+        }
+      } catch (error) {
+        debugPrint('iOS notification inbox lookup: $error');
+      }
+    }
+    if (!mounted) return;
+    final readId = match == null ? id : _inboxId(match);
+    if (readId.isNotEmpty) {
+      setState(() => _readInbox.add(readId));
+      unawaited(_saveInboxState());
+    }
+    _openNotificationData(match ?? data, fallbackTitle: title, fallbackBody: body);
   }
 
   bool _isPaymentUrl(String url) {
