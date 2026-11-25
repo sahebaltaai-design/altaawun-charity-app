@@ -2291,10 +2291,6 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
         onPressed: _showInbox,
         icon: _inboxIcon(),
       )],
-          ),
-        ),
-        icon: const Icon(Icons.notifications_outlined, color: green),
-      )],
     ),
     drawer: Drawer(child: SafeArea(child: Column(children: [
       Container(width: double.infinity, padding: const EdgeInsets.all(24), color: green,
