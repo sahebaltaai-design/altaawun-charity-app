@@ -69,6 +69,25 @@ jobs:
                   f.writeframes(b''.join(samples))
           PY
 
+
+      - name: Fetch and verify original notification sounds
+        run: |
+          mkdir -p assets/tones
+          curl --fail --location --retry 3 'https://www.aytamaliraq.com/wp-content/plugins/altaawun-notifications/assets/tones/tone1.wav' -o assets/tones/tone1.wav
+          echo 'f79185bcab2d5f8fb8823e227c735abf9789c20864318625088ca28643124f3b  assets/tones/tone1.wav' | sha256sum -c -
+          curl --fail --location --retry 3 'https://www.aytamaliraq.com/wp-content/plugins/altaawun-notifications/assets/tones/tone10.wav' -o assets/tones/tone10.wav
+          echo '14b7ed835066248bdb940b962e747b80a761fa74434428eb327161afd53f96e1  assets/tones/tone10.wav' | sha256sum -c -
+          curl --fail --location --retry 3 'https://www.aytamaliraq.com/wp-content/plugins/altaawun-notifications/assets/tones/tone11.wav' -o assets/tones/tone11.wav
+          echo '0989ae6155ec1b6da5700b7a9f0959b40f57c4b2e5eaad635095c69109291daf  assets/tones/tone11.wav' | sha256sum -c -
+          curl --fail --location --retry 3 'https://www.aytamaliraq.com/wp-content/plugins/altaawun-notifications/assets/tones/tone12.wav' -o assets/tones/tone12.wav
+          echo '2c26ed5c0d7d3bb0f9f6e5699118e952cb6bd38fb970e9d63154ca04e157be1b  assets/tones/tone12.wav' | sha256sum -c -
+          curl --fail --location --retry 3 'https://www.aytamaliraq.com/wp-content/plugins/altaawun-notifications/assets/tones/tone13.wav' -o assets/tones/tone13.wav
+          echo 'b27bc31b5ccc8341b2e4d02a0a3bd9f18490c075212a6f56b769535ba7325971  assets/tones/tone13.wav' | sha256sum -c -
+          curl --fail --location --retry 3 'https://www.aytamaliraq.com/wp-content/plugins/altaawun-notifications/assets/tones/tone14.wav' -o assets/tones/tone14.wav
+          echo 'ecc0bc1ff1a4d0cb5c4772a51b15ad4d97752a63410edefb75bad61640b98a8c  assets/tones/tone14.wav' | sha256sum -c -
+          curl --fail --location --retry 3 'https://www.aytamaliraq.com/wp-content/plugins/altaawun-notifications/assets/tones/tone15.wav' -o assets/tones/tone15.wav
+          echo '75485b39e2d51ec8135af78ef6460753c641c10ce8d0fdb67d07e5a4bcf61cf8  assets/tones/tone15.wav' | sha256sum -c -
+
       - name: Create Android platform
         run: |
           flutter create --platforms=android \
@@ -96,7 +115,7 @@ jobs:
       - name: Install Android notification sound resources
         run: |
           mkdir -p android/app/src/main/res/raw
-          for tone in urgent news soft; do
+          for tone in urgent news soft tone1 tone10 tone11 tone12 tone13 tone14 tone15; do
             cp "assets/tones/${tone}.wav" "android/app/src/main/res/raw/altaawun_${tone}.wav"
           done
 
