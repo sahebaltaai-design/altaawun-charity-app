@@ -269,6 +269,36 @@ jobs:
             }
           """
               source = source[:pos] + callbacks + source[pos:]
+          if 'import UserNotifications' not in source:
+              source = 'import UserNotifications\n' + source
+          import re
+          pattern = r'(override\s+func\s+application\s*\(\s*_\s+application:\s*UIApplication,\s*didFinishLaunchingWithOptions[\s\S]*?\)\s*->\s*Bool\s*\{)'
+          match = re.search(pattern, source)
+          assert match, 'Missing launch delegate'
+          source = source[:match.end()] + '\n    UNUserNotificationCenter.current().delegate = self\n' + source[match.end():]
+          assert 'didReceive response: UNNotificationResponse' not in source
+          pos = source.rfind('}')
+          source = source[:pos] + """
+            override func userNotificationCenter(_ center: UNUserNotificationCenter,
+              didReceive response: UNNotificationResponse,
+              withCompletionHandler completionHandler: @escaping () -> Void) {
+              if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+                let content = response.notification.request.content
+                var payload = [String: Any]()
+                for (key, value) in content.userInfo {
+                  if let key = key as? String { payload[key] = value }
+                }
+                payload["title"] = content.title
+                payload["body"] = content.body
+                if let data = try? JSONSerialization.data(withJSONObject: payload),
+                   let json = String(data: data, encoding: .utf8) {
+                  UserDefaults.standard.set(json, forKey: "flutter.altaawun_native_tap")
+                  NSLog("Altaawun native notification tap saved")
+                }
+              }
+              super.userNotificationCenter(center, didReceive: response, withCompletionHandler: completionHandler)
+            }
+          """ + source[pos:]
           path.write_text(source)
           assert 'Messaging.messaging().apnsToken = deviceToken' in source
           print('APNs registration and Firebase token forwarding configured')
