@@ -1107,6 +1107,12 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     final id = (data['notification_id'] ?? '').toString();
     final title = (data['title'] ?? message.notification?.title ?? '').toString().trim();
     final body = (data['body'] ?? message.notification?.body ?? '').toString().trim();
+    final tapKey = id.isNotEmpty ? id : '$title|$body';
+    final now = DateTime.now();
+    if (tapKey == _lastIosTapKey && _lastIosTapAt != null &&
+        now.difference(_lastIosTapAt!).inSeconds < 15) return;
+    _lastIosTapKey = tapKey;
+    _lastIosTapAt = now;
     Map<String, dynamic>? match;
     if (_notificationDestination(data) == null) {
       try {
@@ -1203,6 +1209,29 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
       checkoutUrl = uri.toString();
       _isSlideDestination = true;
     });
+  }
+
+  Timer? _nativeTapTimer;
+  bool _nativeTapReading = false;
+  String _lastIosTapKey = '';
+  DateTime? _lastIosTapAt;
+
+  Future<void> _consumeNativeIosTap() async {
+    if (!mounted || _nativeTapReading || defaultTargetPlatform != TargetPlatform.iOS) return;
+    _nativeTapReading = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final raw = prefs.getString('altaawun_native_tap');
+      if (raw == null || !mounted) return;
+      await prefs.remove('altaawun_native_tap');
+      final data = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      if (mounted) await _openIosNotificationFromInbox(RemoteMessage(data: data));
+    } catch (error) {
+      debugPrint('Native iOS tap: $error');
+    } finally {
+      _nativeTapReading = false;
+    }
   }
 
   void _consumeIosTap() {
@@ -1806,6 +1835,14 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
     unawaited(_restorePushPreferencesAndRegister());
     _pendingIosTap.addListener(_consumeIosTap);
     _consumeIosTap();
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_consumeNativeIosTap()));
+      _nativeTapTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+          unawaited(_consumeNativeIosTap());
+        }
+      });
+    }
     notificationTapUrl.addListener(_onLocalNotificationTap);
     WidgetsBinding.instance.addPostFrameCallback((_) => _onLocalNotificationTap());
     WidgetsBinding.instance.addObserver(this);
@@ -1847,6 +1884,7 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
   void dispose() {
     _slideTimer?.cancel();
     _pushRetryTimer?.cancel();
+    _nativeTapTimer?.cancel();
     _pendingIosTap.removeListener(_consumeIosTap);
     notificationTapUrl.removeListener(_onLocalNotificationTap);
     WidgetsBinding.instance.removeObserver(this);
