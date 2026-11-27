@@ -118,6 +118,10 @@ jobs:
           for tone in urgent news soft tone1 tone10 tone11 tone12 tone13 tone14 tone15; do
             cp "assets/tones/${tone}.wav" "android/app/src/main/res/raw/altaawun_${tone}.wav"
           done
+          # Notification sounds are looked up dynamically by name; preserve them in release builds.
+          cat > android/app/src/main/res/raw/altaawun_keep.xml <<'XML'
+          <resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/altaawun_*" />
+          XML
 
       - name: Configure Arabic app name
         run: bash tool/configure_app_name.sh && bash tool/configure_firebase.sh
