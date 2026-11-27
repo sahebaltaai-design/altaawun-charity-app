@@ -64,7 +64,7 @@ Future<void> _registerEarlyIosTaps() async {
   }
 }
 
-const _notificationChannelPrefix = 'altaawun_tone_v2_';
+String get _notificationChannelPrefix => Platform.isAndroid ? 'altaawun_tone_v3_' : 'altaawun_tone_v2_';
 final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 final ValueNotifier<String?> notificationTapUrl = ValueNotifier<String?>(null);
 
@@ -866,14 +866,18 @@ class _CharityShellState extends State<CharityShell> with WidgetsBindingObserver
 
   Future<void> _syncNotificationToneTopic() async {
     final tone = _notificationTone;
-    final desired = 'altaawun_tone_' + tone + (_notificationVibration ? '_vibrate' : '_silent');
+    final prefix = Platform.isAndroid ? 'altaawun_android_tone_' : 'altaawun_tone_';
+    final desired = prefix + tone + (_notificationVibration ? '_vibrate' : '_silent');
     final messaging = FirebaseMessaging.instance;
     // Remove legacy broadcasts to prevent duplicate notifications.
     await messaging.subscribeToTopic(desired);
     for (final candidate in const ['urgent', 'news', 'soft', 'default', 'tone1', 'tone10', 'tone11', 'tone12', 'tone13', 'tone14', 'tone15', 'managed']) {
       for (final mode in const ['_vibrate', '_silent']) {
-        final topic = 'altaawun_tone_' + candidate + mode;
+        final topic = prefix + candidate + mode;
         if (topic != desired) await messaging.unsubscribeFromTopic(topic);
+        if (Platform.isAndroid) {
+          await messaging.unsubscribeFromTopic('altaawun_tone_' + candidate + mode);
+        }
       }
     }
     await messaging.unsubscribeFromTopic('altaawun_updates');
